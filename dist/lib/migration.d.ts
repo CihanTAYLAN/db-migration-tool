@@ -2,6 +2,7 @@ export interface MigrationOptions {
     tables?: string[];
     batchSize?: number;
     skipExisting?: boolean;
+    useCustomMigrations?: boolean;
 }
 export interface MigrationResult {
     success: boolean;
@@ -12,6 +13,8 @@ export interface MigrationResult {
 }
 export declare class MigrationService {
     migrate(options?: MigrationOptions): Promise<MigrationResult>;
+    private autoMigrate;
+    private orderByDependencies;
     private getMySQLTables;
     private getTableStructure;
     private getTableData;

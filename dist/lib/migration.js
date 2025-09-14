@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.migrationService = exports.MigrationService = void 0;
 const database_1 = require("./database");
+const migration_config_1 = require("./migration-config");
 class MigrationService {
     async migrate(options = {}) {
         const result = {
@@ -14,31 +15,56 @@ class MigrationService {
         try {
             const mysqlClient = database_1.dbManager.getMySQLClient();
             const postgresClient = database_1.dbManager.getPostgreSQLClient();
-            // MySQL'den tabloları listele
-            const tables = await this.getMySQLTables(mysqlClient, options.tables);
-            for (const tableName of tables) {
-                try {
-                    console.log(`Migrating table: ${tableName}`);
-                    // Tablo yapısını al
-                    const tableStructure = await this.getTableStructure(mysqlClient, tableName);
-                    // Verileri oku
-                    const data = await this.getTableData(mysqlClient, tableName, options.batchSize || 1000);
-                    // PostgreSQL'de tablo oluştur (eğer yoksa)
-                    if (!options.skipExisting) {
-                        await this.createTableInPostgres(postgresClient, tableName, tableStructure);
+            // Özel migrasyon dosyalarını kullan
+            if (options.useCustomMigrations !== false) {
+                await migration_config_1.migrationLoader.loadMigrations();
+                const availableMigrations = migration_config_1.migrationLoader.getAvailableTables();
+                if (availableMigrations.length > 0) {
+                    console.log(`📋 Found ${availableMigrations.length} custom migration files: ${availableMigrations.join(', ')}`);
+                    // Hangi tabloları migrate edeceğimizi belirle
+                    const tablesToMigrate = options.tables && options.tables.length > 0
+                        ? options.tables.filter(table => availableMigrations.includes(table))
+                        : availableMigrations;
+                    if (tablesToMigrate.length === 0) {
+                        console.log('⚠️  No matching custom migrations found for requested tables');
+                        return result;
                     }
-                    // Verileri yaz
-                    const insertedCount = await this.insertDataToPostgres(postgresClient, tableName, data);
-                    result.migratedTables.push(tableName);
-                    result.totalRecords += insertedCount;
-                    console.log(`✓ Migrated ${tableName}: ${insertedCount} records`);
+                    // Dependency sırasına göre sırala
+                    const orderedTables = this.orderByDependencies(tablesToMigrate);
+                    for (const tableName of orderedTables) {
+                        try {
+                            const migrationFile = migration_config_1.migrationLoader.getMigration(tableName);
+                            if (!migrationFile)
+                                continue;
+                            console.log(`🚀 Migrating table: ${tableName} (${migrationFile.config.description || 'No description'})`);
+                            const migrationResult = await migrationFile.execute(mysqlClient, postgresClient);
+                            if (migrationResult.success) {
+                                result.migratedTables.push(tableName);
+                                result.totalRecords += migrationResult.recordsProcessed;
+                                console.log(`✅ Migrated ${tableName}: ${migrationResult.recordsProcessed} records`);
+                            }
+                            else {
+                                result.failedTables.push(tableName);
+                                result.errors.push(...migrationResult.errors);
+                                console.error(`❌ Failed to migrate ${tableName}:`, migrationResult.errors);
+                            }
+                        }
+                        catch (error) {
+                            const errorMessage = `Failed to migrate table ${tableName}: ${error}`;
+                            result.errors.push(errorMessage);
+                            result.failedTables.push(tableName);
+                            console.error(errorMessage);
+                        }
+                    }
                 }
-                catch (error) {
-                    const errorMessage = `Failed to migrate table ${tableName}: ${error}`;
-                    result.errors.push(errorMessage);
-                    result.failedTables.push(tableName);
-                    console.error(errorMessage);
+                else {
+                    console.log('⚠️  No custom migration files found, falling back to auto-migration');
+                    return await this.autoMigrate(mysqlClient, postgresClient, options, result);
                 }
+            }
+            else {
+                // Otomatik migrasyon kullan
+                return await this.autoMigrate(mysqlClient, postgresClient, options, result);
             }
             if (result.failedTables.length > 0) {
                 result.success = false;
@@ -50,6 +76,58 @@ class MigrationService {
         }
         finally {
             await database_1.dbManager.disconnect();
+        }
+        return result;
+    }
+    async autoMigrate(mysqlClient, postgresClient, options, result) {
+        // Eski otomatik migrasyon mantığı
+        const tables = await this.getMySQLTables(mysqlClient, options.tables);
+        for (const tableName of tables) {
+            try {
+                console.log(`Migrating table: ${tableName} (auto)`);
+                // Tablo yapısını al
+                const tableStructure = await this.getTableStructure(mysqlClient, tableName);
+                // Verileri oku
+                const data = await this.getTableData(mysqlClient, tableName, options.batchSize || 1000);
+                // PostgreSQL'de tablo oluştur (eğer yoksa)
+                if (!options.skipExisting) {
+                    await this.createTableInPostgres(postgresClient, tableName, tableStructure);
+                }
+                // Verileri yaz
+                const insertedCount = await this.insertDataToPostgres(postgresClient, tableName, data);
+                result.migratedTables.push(tableName);
+                result.totalRecords += insertedCount;
+                console.log(`✓ Migrated ${tableName}: ${insertedCount} records`);
+            }
+            catch (error) {
+                const errorMessage = `Failed to migrate table ${tableName}: ${error}`;
+                result.errors.push(errorMessage);
+                result.failedTables.push(tableName);
+                console.error(errorMessage);
+            }
+        }
+        return result;
+    }
+    orderByDependencies(tables) {
+        // Dependency'lere göre sırala (basit topological sort)
+        const visited = new Set();
+        const result = [];
+        const visit = (table) => {
+            if (visited.has(table))
+                return;
+            visited.add(table);
+            const migration = migration_config_1.migrationLoader.getMigration(table);
+            if (migration?.config.dependencies) {
+                for (const dep of migration.config.dependencies) {
+                    if (tables.includes(dep)) {
+                        visit(dep);
+                    }
+                }
+            }
+            result.push(table);
+        };
+        for (const table of tables) {
+            visit(table);
         }
         return result;
     }

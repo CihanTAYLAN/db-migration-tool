@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { migrationService } from '../lib/migration';
 import { dbManager } from '../lib/database';
+import { migrationLoader } from '../lib/migration-config';
 
 const program = new Command();
 
@@ -17,6 +18,7 @@ program
     .option('-t, --tables <tables>', 'Comma-separated list of tables to migrate', (value) => value.split(','))
     .option('-b, --batch-size <size>', 'Batch size for data migration', parseInt, 1000)
     .option('-s, --skip-existing', 'Skip creating tables if they already exist', false)
+    .option('-a, --auto-only', 'Use only auto-migration (skip custom migration files)', false)
     .action(async (options) => {
         try {
             console.log('🚀 Starting migration...');
@@ -24,7 +26,8 @@ program
             const migrationOptions = {
                 tables: options.tables,
                 batchSize: options.batchSize,
-                skipExisting: options.skipExisting
+                skipExisting: options.skipExisting,
+                useCustomMigrations: !options.autoOnly
             };
 
             const result = await migrationService.migrate(migrationOptions);
@@ -81,6 +84,38 @@ program
             await dbManager.disconnect();
         } catch (error) {
             console.error('💥 Failed to list tables:', error);
+            process.exit(1);
+        }
+    });
+
+program
+    .command('list-migrations')
+    .description('List all custom migration files')
+    .action(async () => {
+        try {
+            console.log('📋 Listing custom migration files...');
+
+            await migrationLoader.loadMigrations();
+            const availableMigrations = migrationLoader.getAvailableTables();
+
+            if (availableMigrations.length === 0) {
+                console.log('⚠️  No custom migration files found');
+                return;
+            }
+
+            console.log(`📊 Found ${availableMigrations.length} migration files:`);
+
+            for (const tableName of availableMigrations) {
+                const migration = migrationLoader.getMigration(tableName);
+                if (migration) {
+                    console.log(`  - ${tableName}: ${migration.config.description || 'No description'}`);
+                    if (migration.config.dependencies && migration.config.dependencies.length > 0) {
+                        console.log(`    Dependencies: ${migration.config.dependencies.join(', ')}`);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('💥 Failed to list migrations:', error);
             process.exit(1);
         }
     });

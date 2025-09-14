@@ -11,6 +11,10 @@ Bu araç, MySQL veritabanlarından PostgreSQL'e veri ve yapı migrasyonu yapmak 
 - 🔍 Bağlantı testleri
 - 📋 Tablo listeleme
 - 🛡️ Hata yönetimi ve raporlama
+- 📁 **Özel Migrasyon Dosyaları**: Her tablo için ayrı migrasyon dosyası
+- 🔗 **Çoklu Tablo Birleştirme**: Birden fazla source tablosundan veri çekme
+- ⚡ **Dependency Yönetimi**: Migrasyon sıralaması ve bağımlılıklar
+- 🎨 **Veri Dönüştürme**: Özel transform fonksiyonları
 
 ## Kurulum
 
@@ -79,6 +83,7 @@ yarn start migrate --skip-existing
 |-------|----------|
 | `migrate` | Migrasyon işlemini başlatır |
 | `list-tables` | MySQL'deki tabloları listeler |
+| `list-migrations` | Özel migrasyon dosyalarını listeler |
 | `test-connection` | Veritabanı bağlantılarını test eder |
 
 ## Seçenekler
@@ -123,6 +128,60 @@ yarn build
 yarn generate
 ```
 
+## Özel Migrasyon Dosyaları
+
+Bu araç, her tablo için ayrı migrasyon dosyası oluşturma özelliğine sahiptir. Bu sayede:
+
+- **Çoklu Tablo Birleştirme**: Birden fazla MySQL tablosundan veri çekerek PostgreSQL'de tek tablo oluşturabilirsiniz
+- **Veri Dönüştürme**: Özel transform fonksiyonları ile veriyi istediğiniz şekilde değiştirebilirsiniz
+- **Dependency Yönetimi**: Migrasyonların birbirine bağımlı olduğu durumlarda sıralama yapabilirsiniz
+
+### Migrasyon Dosyası Örneği
+
+```typescript
+// src/migrations/users.ts
+import { MigrationConfig } from '../lib/migration-config';
+
+export const config: MigrationConfig = {
+    targetTable: 'users',
+    description: 'Users tablosu için migrasyon',
+    sourceTables: [
+        {
+            table: 'user_profiles',
+            columns: ['id', 'first_name', 'last_name', 'email']
+        },
+        {
+            table: 'user_accounts',
+            columns: ['user_id', 'username', 'status'],
+            join: {
+                table: 'user_profiles',
+                on: 'user_accounts.user_id = user_profiles.id',
+                type: 'LEFT'
+            }
+        }
+    ],
+    transform: async (data: any[]) => {
+        return data.map(row => ({
+            id: row.id,
+            username: row.username,
+            full_name: `${row.first_name} ${row.last_name}`,
+            email: row.email,
+            status: row.status || 'active'
+        }));
+    }
+};
+
+export const execute = async (mysqlClient: any, postgresClient: any) => {
+    // Özel migrasyon mantığı
+};
+```
+
+### Özel Migrasyonları Listeleme
+
+```bash
+yarn start list-migrations
+```
+
 ## Proje Yapısı
 
 ```
@@ -132,7 +191,11 @@ migration/
 │   │   └── index.ts          # CLI arayüzü
 │   ├── lib/
 │   │   ├── database.ts       # Veritabanı bağlantıları
-│   │   └── migration.ts      # Migrasyon mantığı
+│   │   ├── migration.ts      # Migrasyon mantığı
+│   │   └── migration-config.ts # Migrasyon yapılandırması
+│   ├── migrations/           # Özel migrasyon dosyaları
+│   │   ├── users.ts
+│   │   └── products.ts
 │   └── generated/            # Prisma client'ları
 ├── prisma/
 │   ├── schema-mysql.prisma   # MySQL schema

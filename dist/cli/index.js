@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const commander_1 = require("commander");
 const migration_1 = require("../lib/migration");
 const database_1 = require("../lib/database");
+const migration_config_1 = require("../lib/migration-config");
 const program = new commander_1.Command();
 program
     .name('migration-cli')
@@ -15,13 +16,15 @@ program
     .option('-t, --tables <tables>', 'Comma-separated list of tables to migrate', (value) => value.split(','))
     .option('-b, --batch-size <size>', 'Batch size for data migration', parseInt, 1000)
     .option('-s, --skip-existing', 'Skip creating tables if they already exist', false)
+    .option('-a, --auto-only', 'Use only auto-migration (skip custom migration files)', false)
     .action(async (options) => {
     try {
         console.log('🚀 Starting migration...');
         const migrationOptions = {
             tables: options.tables,
             batchSize: options.batchSize,
-            skipExisting: options.skipExisting
+            skipExisting: options.skipExisting,
+            useCustomMigrations: !options.autoOnly
         };
         const result = await migration_1.migrationService.migrate(migrationOptions);
         if (result.success) {
@@ -70,6 +73,34 @@ program
     }
     catch (error) {
         console.error('💥 Failed to list tables:', error);
+        process.exit(1);
+    }
+});
+program
+    .command('list-migrations')
+    .description('List all custom migration files')
+    .action(async () => {
+    try {
+        console.log('📋 Listing custom migration files...');
+        await migration_config_1.migrationLoader.loadMigrations();
+        const availableMigrations = migration_config_1.migrationLoader.getAvailableTables();
+        if (availableMigrations.length === 0) {
+            console.log('⚠️  No custom migration files found');
+            return;
+        }
+        console.log(`📊 Found ${availableMigrations.length} migration files:`);
+        for (const tableName of availableMigrations) {
+            const migration = migration_config_1.migrationLoader.getMigration(tableName);
+            if (migration) {
+                console.log(`  - ${tableName}: ${migration.config.description || 'No description'}`);
+                if (migration.config.dependencies && migration.config.dependencies.length > 0) {
+                    console.log(`    Dependencies: ${migration.config.dependencies.join(', ')}`);
+                }
+            }
+        }
+    }
+    catch (error) {
+        console.error('💥 Failed to list migrations:', error);
         process.exit(1);
     }
 });
