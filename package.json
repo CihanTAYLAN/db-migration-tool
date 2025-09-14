@@ -7,7 +7,7 @@
     "migration": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/generated dist/",
     "start": "node dist/cli/index.js",
     "dev": "ts-node src/cli/index.ts",
     "generate": "prisma generate --schema=prisma/schema-mysql.prisma && prisma generate --schema=prisma/schema-postgres.prisma",

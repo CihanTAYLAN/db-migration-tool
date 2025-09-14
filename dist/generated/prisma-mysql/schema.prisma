@@ -1,0 +1,10 @@
+// MySQL veritabanı için schema
+generator mysql_client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma-mysql"
+}
+
+datasource mysql_db {
+  provider = "mysql"
+  url      = env("MYSQL_DATABASE_URL")
+}
