@@ -1,218 +1,307 @@
-# MySQL to PostgreSQL Migration Tool
+# Migration CLI
 
-Bu araç, MySQL veritabanlarından PostgreSQL'e veri ve yapı migrasyonu yapmak için tasarlanmış CLI tabanlı bir uygulamadır.
+A powerful and flexible database migration tool for migrating data between different database systems. Built with Node.js and designed for ease of use and extensibility.
 
-## Özellikler
+## Features
 
-- 🔄 MySQL'den PostgreSQL'e tam veri migrasyonu
-- 📊 Otomatik tip dönüşümü (MySQL → PostgreSQL)
-- 🎯 Belirli tabloları seçerek migrasyon
-- 📦 Batch işleme desteği
-- 🔍 Bağlantı testleri
-- 📋 Tablo listeleme
-- 🛡️ Hata yönetimi ve raporlama
-- 📁 **Özel Migrasyon Dosyaları**: Her tablo için ayrı migrasyon dosyası
-- 🔗 **Çoklu Tablo Birleştirme**: Birden fazla source tablosundan veri çekme
-- ⚡ **Dependency Yönetimi**: Migrasyon sıralaması ve bağımlılıklar
-- 🎨 **Veri Dönüştürme**: Özel transform fonksiyonları
+- 🚀 **Easy Migration**: Simple command-line interface for database migrations
+- 🔄 **Flexible Database Support**: Migrate between any supported database types
+- 📊 **Connection Testing**: Test database connections before running migrations
+- 📝 **Structured Logging**: Comprehensive logging with Winston
+- 🛠️ **Extensible**: Easy to add new migration types and customize behavior
+- 🎯 **Template System**: Reusable migration templates for consistent patterns
 
-## Kurulum
+## Installation
+
+### Global Installation (Recommended)
 
 ```bash
-# Bağımlılıkları yükle
-yarn install
-
-# Prisma client'larını oluştur
-yarn generate
-
-# Projeyi derle
-yarn build
+npm install -g migration-cli
+# or
+yarn global add migration-cli
 ```
 
-## Kullanım
+### Local Installation
 
-### 1. Veritabanı Bağlantılarını Yapılandır
+```bash
+git clone https://github.com/yourusername/migration-cli.git
+cd migration-cli
+npm install
+# or
+yarn install
+```
 
-`.env` dosyasını düzenleyin:
+## Configuration
+
+1. Copy the `.env.example` file to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit the `.env` file with your actual database configurations:
 
 ```env
-# MySQL bağlantısı (kaynak veritabanı)
-MYSQL_DATABASE_URL="mysql://username:password@localhost:3306/source_db"
+# Source Database Configuration
+SOURCE_DB_TYPE=mysql
+SOURCE_DATABASE_URL=mysql://your_username:your_password@localhost:3306/your_source_db
 
-# PostgreSQL bağlantısı (hedef veritabanı)
-POSTGRES_DATABASE_URL="postgresql://username:password@localhost:5432/target_db"
+# Target Database Configuration
+TARGET_DB_TYPE=postgresql
+TARGET_DATABASE_URL=postgresql://your_username:your_password@localhost:5432/your_target_db?schema=public
+
+# Optional: Logging Level
+LOG_LEVEL=info
 ```
 
-### 2. Bağlantıları Test Et
+### Environment Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `SOURCE_DB_TYPE` | Source database type (mysql, postgresql) | Yes | - |
+| `SOURCE_DATABASE_URL` | Source database connection URL | Yes | - |
+| `TARGET_DB_TYPE` | Target database type (mysql, postgresql) | Yes | - |
+| `TARGET_DATABASE_URL` | Target database connection URL | Yes | - |
+| `LOG_LEVEL` | Logging level (error, warn, info, debug) | No | `info` |
+
+## Usage
+
+### Basic Commands
 
 ```bash
-yarn start test-connection
+# Test source database connection
+migration-cli test-source
+
+# Test target database connection
+migration-cli test-target
+
+# Run all migrations
+migration-cli migrate
+
+# List available migrations
+migration-cli migration-list
+
+# Show database configurations
+migration-cli source-db-config
+migration-cli target-db-config
+
+# Show help
+migration-cli --help
 ```
 
-### 3. MySQL Tablolarını Listele
+### Development Mode
+
+If you're running from source:
 
 ```bash
-yarn start list-tables
-```
+# Install dependencies
+yarn install
 
-### 4. Migrasyon Başlat
-
-#### Tüm tabloları migrate et:
-```bash
-yarn start migrate
-```
-
-#### Belirli tabloları migrate et:
-```bash
-yarn start migrate --tables users,products,orders
-```
-
-#### Batch size ile migrate et:
-```bash
-yarn start migrate --batch-size 500
-```
-
-#### Mevcut tabloları atlayarak migrate et:
-```bash
-yarn start migrate --skip-existing
-```
-
-## Komutlar
-
-| Komut | Açıklama |
-|-------|----------|
-| `migrate` | Migrasyon işlemini başlatır |
-| `list-tables` | MySQL'deki tabloları listeler |
-| `list-migrations` | Özel migrasyon dosyalarını listeler |
-| `test-connection` | Veritabanı bağlantılarını test eder |
-
-## Seçenekler
-
-### Migrate Komutu
-
-- `-t, --tables <tables>`: Migrate edilecek tablolar (virgülle ayrılmış)
-- `-b, --batch-size <size>`: Batch boyutu (varsayılan: 1000)
-- `-s, --skip-existing`: Mevcut tabloları oluşturma
-
-## Tip Dönüşümleri
-
-Araç aşağıdaki tip dönüşümlerini otomatik olarak gerçekleştirir:
-
-| MySQL Tipi | PostgreSQL Tipi |
-|------------|-----------------|
-| `INT` | `INTEGER` |
-| `VARCHAR(n)` | `VARCHAR(n)` |
-| `TEXT` | `TEXT` |
-| `DATETIME` | `TIMESTAMP` |
-| `DATE` | `DATE` |
-| `DECIMAL` | `DECIMAL` |
-| `FLOAT` | `REAL` |
-| `DOUBLE` | `DOUBLE PRECISION` |
-| `BIGINT` | `BIGINT` |
-| `BLOB` | `BYTEA` |
-
-## Geliştirme
-
-### Development modunda çalıştırma:
-```bash
+# Run commands
+yarn dev test-source
+yarn dev migrate
 yarn dev --help
 ```
 
-### Kod derleme:
-```bash
-yarn build
-```
+## Migration Structure
 
-### Prisma client'larını yeniden oluşturma:
-```bash
-yarn generate
-```
+### Creating a New Migration
 
-## Özel Migrasyon Dosyaları
+1. Create a new file in `src/migrations/` directory
+2. Extend the `MigrationTemplate` class
+3. Implement the `run()` method
 
-Bu araç, her tablo için ayrı migrasyon dosyası oluşturma özelliğine sahiptir. Bu sayede:
+Example migration file (`src/migrations/users.js`):
 
-- **Çoklu Tablo Birleştirme**: Birden fazla MySQL tablosundan veri çekerek PostgreSQL'de tek tablo oluşturabilirsiniz
-- **Veri Dönüştürme**: Özel transform fonksiyonları ile veriyi istediğiniz şekilde değiştirebilirsiniz
-- **Dependency Yönetimi**: Migrasyonların birbirine bağımlı olduğu durumlarda sıralama yapabilirsiniz
+```javascript
+const { MigrationTemplate } = require('./template');
+const logger = require('../logger');
 
-### Migrasyon Dosyası Örneği
+class UsersMigration extends MigrationTemplate {
+    async run() {
+        logger.info('Starting users migration...');
 
-```typescript
-// src/migrations/users.ts
-import { MigrationConfig } from '../lib/migration-config';
+        try {
+            // Read users data from source
+            const users = await this.query('source', 'SELECT * FROM users');
+            logger.info(`${users.length} users found`);
 
-export const config: MigrationConfig = {
-    targetTable: 'users',
-    description: 'Users tablosu için migrasyon',
-    sourceTables: [
-        {
-            table: 'user_profiles',
-            columns: ['id', 'first_name', 'last_name', 'email']
-        },
-        {
-            table: 'user_accounts',
-            columns: ['user_id', 'username', 'status'],
-            join: {
-                table: 'user_profiles',
-                on: 'user_accounts.user_id = user_profiles.id',
-                type: 'LEFT'
+            if (users.length === 0) {
+                logger.warning('Users table is empty or does not exist in source database');
+                return;
             }
+
+            // Create users table in target (if not exists)
+            await this.query('target', `
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username VARCHAR(255) UNIQUE NOT NULL,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+
+            // Insert each user into target
+            for (const user of users) {
+                await this.query('target', `
+                    INSERT INTO users (id, username, email, created_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT (id) DO UPDATE SET
+                        username = EXCLUDED.username,
+                        email = EXCLUDED.email,
+                        created_at = EXCLUDED.created_at
+                `, [user.id, user.username, user.email, user.created_at]);
+            }
+
+            logger.success('Users migration completed');
+        } catch (error) {
+            logger.error('Users migration failed', { error: error.message });
+            logger.info('Migration continuing...');
         }
-    ],
-    transform: async (data: any[]) => {
-        return data.map(row => ({
-            id: row.id,
-            username: row.username,
-            full_name: `${row.first_name} ${row.last_name}`,
-            email: row.email,
-            status: row.status || 'active'
-        }));
     }
-};
+}
 
-export const execute = async (mysqlClient: any, postgresClient: any) => {
-    // Özel migrasyon mantığı
-};
+module.exports = { default: UsersMigration };
 ```
 
-### Özel Migrasyonları Listeleme
+### Migration Template Methods
 
-```bash
-yarn start list-migrations
+The `MigrationTemplate` class provides several useful methods:
+
+- `check()`: Test database connections
+- `query(dbType, sql, params)`: Execute SQL queries on source or target databases
+- `run()`: Main migration logic (must be implemented by subclasses)
+
+## Database Support
+
+### Supported Databases
+
+- **Source**: MySQL (using mysql2)
+- **Target**: PostgreSQL (using pg)
+
+### Connection URLs
+
+#### MySQL
+```
+mysql://username:password@host:port/database
 ```
 
-## Proje Yapısı
+#### PostgreSQL
+```
+postgresql://username:password@host:port/database?schema=schema_name
+```
+
+## Logging
+
+The application uses Winston for structured logging:
+
+- **Console Output**: Colored, timestamped logs
+- **File Output**: JSON format logs in `logs/` directory
+- **Log Levels**: error, warn, info, debug
+
+### Log Files
+
+- `logs/error.log`: Error-level logs only
+- `logs/combined.log`: All log levels
+
+### Log Level Configuration
+
+Set the `LOG_LEVEL` environment variable:
+
+```env
+LOG_LEVEL=debug  # Show all logs including debug
+LOG_LEVEL=info   # Show info, warn, and error logs
+LOG_LEVEL=error  # Show only error logs
+```
+
+## Development
+
+### Project Structure
 
 ```
-migration/
+migration-cli/
 ├── src/
 │   ├── cli/
-│   │   └── index.ts          # CLI arayüzü
-│   ├── lib/
-│   │   ├── database.ts       # Veritabanı bağlantıları
-│   │   ├── migration.ts      # Migrasyon mantığı
-│   │   └── migration-config.ts # Migrasyon yapılandırması
-│   ├── migrations/           # Özel migrasyon dosyaları
-│   │   ├── users.ts
-│   │   └── products.ts
-│   └── generated/            # Prisma client'ları
-├── prisma/
-│   ├── schema-mysql.prisma   # MySQL schema
-│   └── schema-postgres.prisma # PostgreSQL schema
-├── dist/                     # Derlenmiş kod
-├── package.json
-├── tsconfig.json
-└── .env                      # Ortam değişkenleri
+│   │   └── index.js          # CLI interface
+│   ├── db.js                 # Database client wrapper
+│   ├── logger.js             # Winston logger configuration
+│   ├── migrations/
+│   │   ├── template.js       # Base migration template
+│   │   └── products.js       # Example products migration
+│   └── index.js              # Main entry point
+├── .env                      # Environment configuration (create from .env.example)
+├── .env.example              # Environment configuration template
+├── package.json              # Project configuration
+├── README.md                 # This file
+└── .gitignore               # Git ignore rules
 ```
 
-## Gereksinimler
+### Adding New Features
 
-- Node.js 16+
-- MySQL 5.7+
-- PostgreSQL 12+
-- Yarn
+1. **New CLI Commands**: Add to `src/cli/index.js`
+2. **New Migration Types**: Create in `src/migrations/`
+3. **Database Support**: Extend `src/db.js`
+4. **Logging**: Use the logger from `src/logger.js`
 
-## Lisans
+### Testing
 
-ISC
+```bash
+# Test database connections
+yarn dev test-source
+yarn dev test-target
+
+# Test migrations
+yarn dev migrate
+
+# Test CLI help
+yarn dev --help
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes and add tests
+4. Commit your changes: `git commit -am 'Add new feature'`
+5. Push to the branch: `git push origin feature-name`
+6. Submit a pull request
+
+### Development Guidelines
+
+- Use async/await for asynchronous operations
+- Handle errors gracefully with try/catch
+- Use the provided logger for all logging
+- Follow the existing code style
+- Add JSDoc comments for new functions
+- Test your changes thoroughly
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+If you encounter any issues or have questions:
+
+1. Check the [Issues](https://github.com/yourusername/migration-cli/issues) page
+2. Create a new issue with detailed information
+3. Include your environment details and error logs
+
+## Changelog
+
+### v1.0.0
+- Initial release
+- Flexible database migration support
+- CLI interface with multiple commands
+- Winston logging integration
+- Template-based migration system
+- Connection testing functionality
+
+## Roadmap
+
+- [ ] Support for additional database types
+- [ ] Migration rollback functionality
+- [ ] Migration status tracking
+
+---
+
+Made with ❤️ for database migration needs
