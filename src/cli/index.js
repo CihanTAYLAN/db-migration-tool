@@ -50,7 +50,7 @@ program
 
 program
     .command('migrate')
-    .description('Run all migrations')
+    .description('Run all migrations in correct order')
     .action(async () => {
         logger.info('Starting migration process...');
 
@@ -61,9 +61,31 @@ program
             return;
         }
 
-        const files = fs.readdirSync(migrationDir).filter(file => file.endsWith('.js') && file !== 'template.js');
+        // Define migration order for proper dependency handling
+        const migrationOrder = [
+            'categories.js',
+            'products.js',
+            'product_categories.js',
+            'product_images.js',
+            'product_translations.js',
+            'product_prices.js'
+        ];
 
-        for (const file of files) {
+        // Get all available migration files
+        const availableFiles = fs.readdirSync(migrationDir).filter(file =>
+            file.endsWith('.js') && file !== 'template.js'
+        );
+
+        // Filter and sort migrations according to defined order
+        const orderedMigrations = migrationOrder.filter(file => availableFiles.includes(file));
+        const unorderedMigrations = availableFiles.filter(file => !migrationOrder.includes(file));
+
+        // Combine ordered and unordered migrations
+        const allMigrations = [...orderedMigrations, ...unorderedMigrations];
+
+        logger.info(`Found ${allMigrations.length} migration files to run`);
+
+        for (const file of allMigrations) {
             const migrationPath = path.join(migrationDir, file);
             const migrationModule = require(migrationPath);
 
@@ -79,10 +101,14 @@ program
                 logger.info(`Running migration: ${file}`);
                 try {
                     await migrationInstance.run();
-                    logger.success(`${file} completed`);
+                    logger.success(`${file} completed successfully`);
                 } catch (error) {
                     logger.error(`${file} failed`, { error: error.message });
+                    // Continue with next migration instead of stopping
+                    logger.warning('Continuing with next migration...');
                 }
+            } else {
+                logger.warning(`Skipping ${file} - no default export found`);
             }
         }
 

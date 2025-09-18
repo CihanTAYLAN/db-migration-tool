@@ -54,7 +54,16 @@ class ProductsMigration extends MigrationTemplate {
 
             logger.info(`Attribute IDs - name: ${nameAttrId}, price: ${priceAttrId}, desc: ${descAttrId}, short_desc: ${shortDescAttrId}`);
 
-            // Query products with flattened data
+            // Get additional attribute IDs for images and URL
+            const imageAttrResult = await this.query('source', 'SELECT attribute_id FROM eav_attribute WHERE attribute_code = "image" AND entity_type_id = (SELECT entity_type_id FROM eav_entity_type WHERE entity_type_code = "catalog_product")');
+            const imageAttrId = imageAttrResult && imageAttrResult.length > 0 ? imageAttrResult[0].attribute_id : null;
+
+            const urlKeyAttrResult = await this.query('source', 'SELECT attribute_id FROM eav_attribute WHERE attribute_code = "url_key" AND entity_type_id = (SELECT entity_type_id FROM eav_entity_type WHERE entity_type_code = "catalog_product")');
+            const urlKeyAttrId = urlKeyAttrResult && urlKeyAttrResult.length > 0 ? urlKeyAttrResult[0].attribute_id : null;
+
+            logger.info(`Additional Attribute IDs - image: ${imageAttrId}, url_key: ${urlKeyAttrId}`);
+
+            // Query products with flattened data including categories, images, and URL
             const productsQuery = `
                 SELECT
                     cpe.entity_id,
@@ -63,18 +72,28 @@ class ProductsMigration extends MigrationTemplate {
                     cped.value as price,
                     cpevd.value as description,
                     cpevs.value as short_description,
+                    cpevi.value as image,
+                    cpevu.value as url_key,
                     cpe.created_at,
                     cpe.updated_at,
-                    cpe.updated_at as modified_at
+                    GROUP_CONCAT(DISTINCT ccp.category_id) as category_ids,
+                    GROUP_CONCAT(DISTINCT cpg.value) as gallery_images
                 FROM catalog_product_entity cpe
                 LEFT JOIN catalog_product_entity_varchar cpev ON cpe.entity_id = cpev.entity_id AND cpev.attribute_id = ? AND cpev.store_id = 0
                 LEFT JOIN catalog_product_entity_decimal cped ON cpe.entity_id = cped.entity_id AND cped.attribute_id = ? AND cped.store_id = 0
                 LEFT JOIN catalog_product_entity_text cpevd ON cpe.entity_id = cpevd.entity_id AND cpevd.attribute_id = ? AND cpevd.store_id = 0
                 LEFT JOIN catalog_product_entity_varchar cpevs ON cpe.entity_id = cpevs.entity_id AND cpevs.attribute_id = ? AND cpevs.store_id = 0
+                LEFT JOIN catalog_product_entity_varchar cpevi ON cpe.entity_id = cpevi.entity_id AND cpevi.attribute_id = ? AND cpevi.store_id = 0
+                LEFT JOIN catalog_product_entity_varchar cpevu ON cpe.entity_id = cpevu.entity_id AND cpevu.attribute_id = ? AND cpevu.store_id = 0
+                LEFT JOIN catalog_category_product ccp ON cpe.entity_id = ccp.product_id
+                LEFT JOIN catalog_product_entity_media_gallery_value_to_entity cpg_vte ON cpe.entity_id = cpg_vte.entity_id
+                LEFT JOIN catalog_product_entity_media_gallery cpg ON cpg_vte.value_id = cpg.value_id AND cpg.disabled = 0
                 WHERE cpe.type_id = 'simple'
+                GROUP BY cpe.entity_id, cpe.sku, cpev.value, cped.value, cpevd.value, cpevs.value, cpevi.value, cpevu.value, cpe.created_at, cpe.updated_at
+                ORDER BY cpe.entity_id
             `;
 
-            const products = await this.query('source', productsQuery, [nameAttrId, priceAttrId, descAttrId, shortDescAttrId]);
+            const products = await this.query('source', productsQuery, [nameAttrId, priceAttrId, descAttrId, shortDescAttrId, imageAttrId, urlKeyAttrId]);
             logger.info(`${products.length} products found`);
 
             if (products.length === 0) {
@@ -165,6 +184,7 @@ class ProductsMigration extends MigrationTemplate {
                 `;
 
                 await this.query('target', insertQuery, values);
+
                 insertedCount += batch.length;
                 logger.info(`Batch ${batchIndex}/${Math.ceil(products.length / BATCH_SIZE)} completed (${insertedCount}/${products.length} products)`);
             }
@@ -173,7 +193,7 @@ class ProductsMigration extends MigrationTemplate {
             await this.migrateProductTranslations(products);
             // Skip product images migration due to schema incompatibility
             // await this.migrateProductImages(products);
-            await this.migrateProductCategories(products);
+            await this.migrateProductCategoriesFromQuery(products);
             await this.migrateProductPrices(products);
 
             // Update migration statistics
@@ -197,6 +217,7 @@ class ProductsMigration extends MigrationTemplate {
                 'product_translations',
                 'product_images',
                 'categories',
+                'category_translations',
                 'product_categories',
                 'product_prices'
             ];
@@ -214,6 +235,129 @@ class ProductsMigration extends MigrationTemplate {
             logger.error('Products migration failed', { error: error.message });
         } finally {
             await this.disconnectAll();
+        }
+    }
+
+    async processProductCategoriesBatch(batch, pgProducts) {
+        try {
+            // Get existing categories from target with their translations to get original entity_id
+            const existingCategories = await this.query('target', `
+                SELECT c.id, c.code, ct.slug, ct.language_id
+                FROM categories c
+                LEFT JOIN category_translations ct ON c.id = ct.category_id
+            `);
+
+            // Create comprehensive category mapping
+            const categoryMap = new Map();
+
+            // First, try to get original category data from source to create proper mapping
+            const urlKeyAttrResult = await this.query('source', 'SELECT attribute_id FROM eav_attribute WHERE attribute_code = "url_key" AND entity_type_id = (SELECT entity_type_id FROM eav_entity_type WHERE entity_type_code = "catalog_category")');
+            const urlKeyAttrId = urlKeyAttrResult && urlKeyAttrResult.length > 0 ? urlKeyAttrResult[0].attribute_id : null;
+
+            let sourceCategories = [];
+            if (urlKeyAttrId) {
+                sourceCategories = await this.query('source', `
+                    SELECT
+                        cce.entity_id,
+                        ccev.value as url_key
+                    FROM catalog_category_entity cce
+                    LEFT JOIN catalog_category_entity_varchar ccev ON cce.entity_id = ccev.entity_id
+                        AND ccev.attribute_id = ? AND ccev.store_id = 0
+                    WHERE cce.entity_id > 1
+                `, [urlKeyAttrId]);
+            } else {
+                // Fallback: just get entity_ids without url_key
+                sourceCategories = await this.query('source', `
+                    SELECT entity_id, NULL as url_key FROM catalog_category_entity
+                    WHERE entity_id > 1
+                `);
+            }
+
+            const sourceCategoryMap = new Map();
+            sourceCategories.forEach(cat => {
+                sourceCategoryMap.set(cat.entity_id, cat.url_key);
+            });
+
+            // Create mapping from source entity_id to target category_id
+            for (const cat of existingCategories) {
+                // Try different patterns to match source entity_id
+                let sourceEntityId = null;
+
+                // Pattern 1: If code is url_key, find the entity_id
+                if (cat.slug) {
+                    for (const [entityId, urlKey] of sourceCategoryMap) {
+                        if (urlKey === cat.code) {
+                            sourceEntityId = entityId;
+                            break;
+                        }
+                    }
+                }
+
+                // Pattern 2: If code is category-{id} format
+                if (!sourceEntityId) {
+                    const match = cat.code.match(/^category-(\d+)$/);
+                    if (match) {
+                        sourceEntityId = parseInt(match[1]);
+                    }
+                }
+
+                // Pattern 3: If slug matches url_key
+                if (!sourceEntityId && cat.slug) {
+                    for (const [entityId, urlKey] of sourceCategoryMap) {
+                        if (urlKey === cat.slug) {
+                            sourceEntityId = entityId;
+                            break;
+                        }
+                    }
+                }
+
+                if (sourceEntityId) {
+                    categoryMap.set(sourceEntityId, cat.id);
+                }
+            }
+
+            // Process categories for this batch using data from main query
+            const productCategoryRelations = [];
+            for (let i = 0; i < batch.length; i++) {
+                const product = batch[i];
+                const pgProduct = pgProducts[i];
+
+                if (product.category_ids) {
+                    const categoryIds = product.category_ids.split(',');
+                    for (const catId of categoryIds) {
+                        if (catId && catId.trim()) {
+                            const categoryId = categoryMap.get(parseInt(catId.trim()));
+                            if (categoryId) {
+                                productCategoryRelations.push({
+                                    id: uuidv4(),
+                                    product_id: pgProduct.id,
+                                    category_id: categoryId,
+                                    created_at: product.created_at,
+                                    updated_at: product.updated_at
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (productCategoryRelations.length > 0) {
+                // Insert product-category relations
+                const fieldCount = Object.keys(productCategoryRelations[0]).length;
+                const placeholders = productCategoryRelations.map((_, index) => {
+                    const start = index * fieldCount + 1;
+                    const params = Array.from({ length: fieldCount }, (_, i) => `$${start + i}`);
+                    return `(${params.join(', ')})`;
+                }).join(', ');
+
+                const values = productCategoryRelations.flatMap(pc => Object.values(pc));
+                const fields = Object.keys(productCategoryRelations[0]).join(', ');
+
+                await this.query('target', `INSERT INTO product_categories (${fields}) VALUES ${placeholders} ON CONFLICT DO NOTHING`, values);
+                logger.info(`Processed ${productCategoryRelations.length} product-category relations for batch`);
+            }
+        } catch (error) {
+            logger.error('Product categories batch processing failed', { error: error.message });
         }
     }
 
@@ -247,7 +391,7 @@ class ProductsMigration extends MigrationTemplate {
                         title: product.name,
                         description: product.description,
                         short_description: product.short_description,
-                        slug: product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+                        slug: product.url_key || product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
                         meta_title: null,
                         meta_description: null,
                         meta_keywords: null,
@@ -387,6 +531,152 @@ class ProductsMigration extends MigrationTemplate {
         }
     }
 
+    async migrateProductCategoriesFromQuery(products) {
+        logger.info('Starting product categories migration from main query...');
+
+        try {
+            // Get product IDs from target
+            const productSkus = products.map(p => p.product_sku);
+            const targetProducts = await this.query('target', 'SELECT id, product_web_sku FROM products WHERE product_web_sku = ANY($1)', [productSkus]);
+            const productMap = new Map(targetProducts.map(p => [p.product_web_sku, p.id]));
+
+            // Get existing categories from target with their translations to get original entity_id
+            const existingCategories = await this.query('target', `
+                SELECT c.id, c.code, ct.slug, ct.language_id
+                FROM categories c
+                LEFT JOIN category_translations ct ON c.id = ct.category_id
+            `);
+
+            logger.info(`Found ${existingCategories.length} categories in target database`);
+
+            // Create comprehensive category mapping
+            const categoryMap = new Map();
+
+            // First, try to get original category data from source to create proper mapping
+            const urlKeyAttrResult = await this.query('source', 'SELECT attribute_id FROM eav_attribute WHERE attribute_code = "url_key" AND entity_type_id = (SELECT entity_type_id FROM eav_entity_type WHERE entity_type_code = "catalog_category")');
+            const urlKeyAttrId = urlKeyAttrResult && urlKeyAttrResult.length > 0 ? urlKeyAttrResult[0].attribute_id : null;
+
+            let sourceCategories = [];
+            if (urlKeyAttrId) {
+                sourceCategories = await this.query('source', `
+                    SELECT
+                        cce.entity_id,
+                        ccev.value as url_key
+                    FROM catalog_category_entity cce
+                    LEFT JOIN catalog_category_entity_varchar ccev ON cce.entity_id = ccev.entity_id
+                        AND ccev.attribute_id = ? AND ccev.store_id = 0
+                    WHERE cce.entity_id > 1
+                `, [urlKeyAttrId]);
+            } else {
+                // Fallback: just get entity_ids without url_key
+                sourceCategories = await this.query('source', `
+                    SELECT entity_id, NULL as url_key FROM catalog_category_entity
+                    WHERE entity_id > 1
+                `);
+            }
+
+            const sourceCategoryMap = new Map();
+            sourceCategories.forEach(cat => {
+                sourceCategoryMap.set(cat.entity_id, cat.url_key);
+            });
+
+            // Create mapping from source entity_id to target category_id
+            for (const cat of existingCategories) {
+                // Try different patterns to match source entity_id
+                let sourceEntityId = null;
+
+                // Pattern 1: If code is url_key, find the entity_id
+                if (cat.slug) {
+                    for (const [entityId, urlKey] of sourceCategoryMap) {
+                        if (urlKey === cat.code) {
+                            sourceEntityId = entityId;
+                            break;
+                        }
+                    }
+                }
+
+                // Pattern 2: If code is category-{id} format
+                if (!sourceEntityId) {
+                    const match = cat.code.match(/^category-(\d+)$/);
+                    if (match) {
+                        sourceEntityId = parseInt(match[1]);
+                    }
+                }
+
+                // Pattern 3: If slug matches url_key
+                if (!sourceEntityId && cat.slug) {
+                    for (const [entityId, urlKey] of sourceCategoryMap) {
+                        if (urlKey === cat.slug) {
+                            sourceEntityId = entityId;
+                            break;
+                        }
+                    }
+                }
+
+                if (sourceEntityId) {
+                    categoryMap.set(sourceEntityId, cat.id);
+                }
+            }
+
+            logger.info(`Created category mapping for ${categoryMap.size} categories`);
+
+            // Process categories using data from main query
+            const productCategoryRelations = [];
+            for (const product of products) {
+                const productId = productMap.get(product.product_sku);
+                if (!productId || !product.category_ids) continue;
+
+                const categoryIds = product.category_ids.split(',');
+                for (const catId of categoryIds) {
+                    if (catId && catId.trim()) {
+                        const categoryId = categoryMap.get(parseInt(catId.trim()));
+                        if (categoryId) {
+                            productCategoryRelations.push({
+                                id: uuidv4(),
+                                product_id: productId,
+                                category_id: categoryId,
+                                created_at: product.created_at,
+                                updated_at: product.updated_at
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (productCategoryRelations.length === 0) {
+                logger.info('No product-category relations to migrate');
+                return;
+            }
+
+            logger.info(`Processing ${productCategoryRelations.length} product-category relations...`);
+
+            // Insert in smaller batches to avoid parameter limits
+            const BATCH_SIZE = 500;
+            let totalInserted = 0;
+
+            for (let i = 0; i < productCategoryRelations.length; i += BATCH_SIZE) {
+                const batch = productCategoryRelations.slice(i, i + BATCH_SIZE);
+                const fieldCount = Object.keys(batch[0]).length;
+                const placeholders = batch.map((_, index) => {
+                    const start = index * fieldCount + 1;
+                    const params = Array.from({ length: fieldCount }, (_, idx) => `$${start + idx}`);
+                    return `(${params.join(', ')})`;
+                }).join(', ');
+
+                const values = batch.flatMap(pc => Object.values(pc));
+                const fields = Object.keys(batch[0]).join(', ');
+
+                await this.query('target', `INSERT INTO product_categories (${fields}) VALUES ${placeholders} ON CONFLICT DO NOTHING`, values);
+                totalInserted += batch.length;
+                logger.info(`Inserted ${totalInserted}/${productCategoryRelations.length} product-category relations`);
+            }
+
+            logger.success(`Product categories migration completed: ${totalInserted} relations inserted`);
+        } catch (error) {
+            logger.error('Product categories migration failed', { error: error.message });
+        }
+    }
+
     async migrateProductCategories(products) {
         logger.info('Starting product categories migration...');
 
@@ -396,118 +686,167 @@ class ProductsMigration extends MigrationTemplate {
             const targetProducts = await this.query('target', 'SELECT id, product_web_sku FROM products WHERE product_web_sku = ANY($1)', [productSkus]);
             const productMap = new Map(targetProducts.map(p => [p.product_web_sku, p.id]));
 
-            // Query product categories from Magento (split into smaller batches to avoid parameter limit)
-            const CATEGORY_BATCH_SIZE = 1000;
-            let allProductCategories = [];
+            // Get existing categories from target with their translations to get original entity_id
+            const existingCategories = await this.query('target', `
+                SELECT c.id, c.code, ct.slug, ct.language_id
+                FROM categories c
+                LEFT JOIN category_translations ct ON c.id = ct.category_id
+            `);
 
-            for (let i = 0; i < productSkus.length; i += CATEGORY_BATCH_SIZE) {
-                const batch = productSkus.slice(i, i + CATEGORY_BATCH_SIZE);
-                const categoryPlaceholders = batch.map(() => '?').join(',');
-                const categoryQuery = `
-                    SELECT
-                        cpe.entity_id,
-                        cpe.sku,
-                        ccp.category_id,
-                        cce.path as category_path,
-                        ccev.value as category_name
-                    FROM catalog_product_entity cpe
-                    JOIN catalog_category_product ccp ON cpe.entity_id = ccp.product_id
-                    JOIN catalog_category_entity cce ON ccp.category_id = cce.entity_id
-                    LEFT JOIN catalog_category_entity_varchar ccev ON cce.entity_id = ccev.entity_id
-                        AND ccev.attribute_id = (SELECT attribute_id FROM eav_attribute WHERE attribute_code = 'name' AND entity_type_id = (SELECT entity_type_id FROM eav_entity_type WHERE entity_type_code = 'catalog_category'))
-                        AND ccev.store_id = 0
-                    WHERE cpe.sku IN (${categoryPlaceholders})
-                `;
+            logger.info(`Found ${existingCategories.length} categories in target database`);
 
-                const batchCategories = await this.query('source', categoryQuery, batch);
-                allProductCategories = allProductCategories.concat(batchCategories);
-            }
+            // Debug: Check what languages exist
+            const languages = await this.query('target', 'SELECT * FROM languages');
+            logger.info(`Available languages: ${languages.map(l => `${l.code} (${l.id})`).join(', ')}`);
 
-            const productCategories = allProductCategories;
+            // Filter categories by available languages
+            const validCategories = existingCategories.filter(cat => {
+                if (!cat.language_id) return true; // Include categories without translations
+                return languages.some(lang => lang.id === cat.language_id);
+            });
 
-            if (productCategories.length === 0) {
-                logger.info('No product categories found');
+            logger.info(`Valid categories after language filter: ${validCategories.length}`);
+
+            if (validCategories.length === 0) {
+                logger.warning('No valid categories found in target database, skipping product categories migration');
                 return;
             }
 
-            // Check existing categories and create missing ones
+            // Create comprehensive category mapping
             const categoryMap = new Map();
 
-            // Get existing categories first
-            const existingCategories = await this.query('target', 'SELECT id, code FROM categories');
-            const existingCategoryMap = new Map(existingCategories.map(c => [c.code, c.id]));
+            // First, try to get original category data from source to create proper mapping
+            // In Magento, url_key is stored as an attribute in catalog_category_entity_varchar
+            const urlKeyAttrResult = await this.query('source', 'SELECT attribute_id FROM eav_attribute WHERE attribute_code = "url_key" AND entity_type_id = (SELECT entity_type_id FROM eav_entity_type WHERE entity_type_code = "catalog_category")');
+            const urlKeyAttrId = urlKeyAttrResult && urlKeyAttrResult.length > 0 ? urlKeyAttrResult[0].attribute_id : null;
 
-            for (const pc of productCategories) {
-                const categoryCode = `cat_${pc.category_id}`;
-                let categoryId = existingCategoryMap.get(categoryCode);
+            let sourceCategories = [];
+            if (urlKeyAttrId) {
+                sourceCategories = await this.query('source', `
+                    SELECT
+                        cce.entity_id,
+                        ccev.value as url_key
+                    FROM catalog_category_entity cce
+                    LEFT JOIN catalog_category_entity_varchar ccev ON cce.entity_id = ccev.entity_id
+                        AND ccev.attribute_id = ? AND ccev.store_id = 0
+                    WHERE cce.entity_id > 1
+                `, [urlKeyAttrId]);
+            } else {
+                // Fallback: just get entity_ids without url_key
+                sourceCategories = await this.query('source', `
+                    SELECT entity_id, NULL as url_key FROM catalog_category_entity
+                    WHERE entity_id > 1
+                `);
+            }
 
-                if (!categoryId) {
-                    // Create new category
-                    categoryId = uuidv4();
-                    const newCategory = {
-                        id: categoryId,
-                        code: categoryCode,
-                        sort: 0,
-                        is_hidden: false,
-                        created_at: new Date(),
-                        updated_at: new Date(),
-                        parent_id: null
-                    };
+            const sourceCategoryMap = new Map();
+            sourceCategories.forEach(cat => {
+                sourceCategoryMap.set(cat.entity_id, cat.url_key);
+            });
 
-                    try {
-                        await this.query('target', `
-                            INSERT INTO categories (id, code, sort, is_hidden, created_at, updated_at, parent_id)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7)
-                            ON CONFLICT (code) DO NOTHING
-                        `, [newCategory.id, newCategory.code, newCategory.sort, newCategory.is_hidden, newCategory.created_at, newCategory.updated_at, newCategory.parent_id]);
-                    } catch (error) {
-                        logger.warning(`Failed to insert category ${categoryCode}, skipping: ${error.message}`);
-                        continue;
+            // Create mapping from source entity_id to target category_id
+            for (const cat of existingCategories) {
+                // Try different patterns to match source entity_id
+                let sourceEntityId = null;
+
+                // Pattern 1: If code is url_key, find the entity_id
+                if (cat.slug) {
+                    for (const [entityId, urlKey] of sourceCategoryMap) {
+                        if (urlKey === cat.code) {
+                            sourceEntityId = entityId;
+                            break;
+                        }
                     }
                 }
 
-                categoryMap.set(pc.category_id, categoryId);
-            }
+                // Pattern 2: If code is category-{id} format
+                if (!sourceEntityId) {
+                    const match = cat.code.match(/^category-(\d+)$/);
+                    if (match) {
+                        sourceEntityId = parseInt(match[1]);
+                    }
+                }
 
-            // Create product-category relationships
-            const productCategoryRelations = [];
-            for (const pc of productCategories) {
-                const productId = productMap.get(pc.sku);
-                const categoryId = categoryMap.get(pc.category_id);
+                // Pattern 3: If slug matches url_key
+                if (!sourceEntityId && cat.slug) {
+                    for (const [entityId, urlKey] of sourceCategoryMap) {
+                        if (urlKey === cat.slug) {
+                            sourceEntityId = entityId;
+                            break;
+                        }
+                    }
+                }
 
-                if (productId && categoryId) {
-                    productCategoryRelations.push({
-                        id: uuidv4(),
-                        product_id: productId,
-                        category_id: categoryId,
-                        created_at: new Date(),
-                        updated_at: new Date()
-                    });
-                } else {
-                    logger.debug(`Skipping product-category relation for product ${pc.sku} - productId: ${productId}, categoryId: ${categoryId}`);
+                if (sourceEntityId) {
+                    categoryMap.set(sourceEntityId, cat.id);
                 }
             }
 
-            if (productCategoryRelations.length > 0) {
-                // Batch insert product-category relations to avoid parameter limit
-                const RELATION_BATCH_SIZE = 500;
-                for (let i = 0; i < productCategoryRelations.length; i += RELATION_BATCH_SIZE) {
-                    const batch = productCategoryRelations.slice(i, i + RELATION_BATCH_SIZE);
-                    const fieldCount = Object.keys(batch[0]).length;
-                    const placeholders = batch.map((_, index) => {
-                        const start = index * fieldCount + 1;
-                        const params = Array.from({ length: fieldCount }, (_, i) => `$${start + i}`);
-                        return `(${params.join(', ')})`;
-                    }).join(', ');
+            logger.info(`Created category mapping for ${categoryMap.size} categories`);
 
-                    const values = batch.flatMap(pc => Object.values(pc));
-                    const fields = Object.keys(batch[0]).join(', ');
+            // Query product categories from Magento in smaller batches
+            const BATCH_SIZE = 500;
+            let totalRelations = 0;
 
-                    await this.query('target', `INSERT INTO product_categories (${fields}) VALUES ${placeholders}`, values);
+            for (let i = 0; i < productSkus.length; i += BATCH_SIZE) {
+                const batch = productSkus.slice(i, i + BATCH_SIZE);
+                const placeholders = batch.map(() => '?').join(',');
+
+                const categoryQuery = `
+                    SELECT
+                        cpe.sku,
+                        ccp.category_id
+                    FROM catalog_product_entity cpe
+                    JOIN catalog_category_product ccp ON cpe.entity_id = ccp.product_id
+                    WHERE cpe.sku IN (${placeholders})
+                    AND ccp.category_id > 1
+                `;
+
+                const batchCategories = await this.query('source', categoryQuery, batch);
+
+                if (batchCategories.length === 0) continue;
+
+                // Create product-category relationships
+                const productCategoryRelations = [];
+                for (const pc of batchCategories) {
+                    const productId = productMap.get(pc.sku);
+                    const categoryId = categoryMap.get(pc.category_id);
+
+                    if (productId && categoryId) {
+                        productCategoryRelations.push({
+                            id: uuidv4(),
+                            product_id: productId,
+                            category_id: categoryId,
+                            created_at: new Date(),
+                            updated_at: new Date()
+                        });
+                    }
+                }
+
+                if (productCategoryRelations.length > 0) {
+                    // Insert in smaller batches to avoid parameter limits
+                    const INSERT_BATCH_SIZE = 100;
+                    for (let j = 0; j < productCategoryRelations.length; j += INSERT_BATCH_SIZE) {
+                        const insertBatch = productCategoryRelations.slice(j, j + INSERT_BATCH_SIZE);
+                        const fieldCount = Object.keys(insertBatch[0]).length;
+                        const insertPlaceholders = insertBatch.map((_, index) => {
+                            const start = index * fieldCount + 1;
+                            const params = Array.from({ length: fieldCount }, (_, idx) => `$${start + idx}`);
+                            return `(${params.join(', ')})`;
+                        }).join(', ');
+
+                        const values = insertBatch.flatMap(pc => Object.values(pc));
+                        const fields = Object.keys(insertBatch[0]).join(', ');
+
+                        await this.query('target', `INSERT INTO product_categories (${fields}) VALUES ${insertPlaceholders} ON CONFLICT DO NOTHING`, values);
+                    }
+
+                    totalRelations += productCategoryRelations.length;
+                    logger.info(`Processed ${totalRelations} product-category relations so far...`);
                 }
             }
 
-            logger.success(`Product categories migration completed: ${productCategoryRelations.length} relations inserted`);
+            logger.success(`Product categories migration completed: ${totalRelations} relations inserted`);
         } catch (error) {
             logger.error('Product categories migration failed', { error: error.message });
         }

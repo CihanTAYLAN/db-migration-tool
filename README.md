@@ -96,11 +96,48 @@ If you're running from source:
 # Install dependencies
 yarn install
 
-# Run commands
+# Test database connections
+yarn test-connections
+
+# Run all migrations
+yarn migrate
+
+# Run specific commands
 yarn dev test-source
 yarn dev migrate
 yarn dev --help
 ```
+
+### Products Migration Workflow
+
+The tool includes a complete products migration system that migrates Magento 2 products to PostgreSQL:
+
+1. **Categories Migration** (`categories.js`): Migrates product categories with hierarchy
+2. **Products Migration** (`products.js`): Migrates basic product information
+3. **Product Categories** (`product_categories.js`): Links products to categories
+4. **Product Images** (`product_images.js`): Migrates product gallery images
+5. **Product Translations** (`product_translations.js`): Migrates multi-language content
+6. **Product Prices** (`product_prices.js`): Migrates pricing information with currency support
+
+#### Migration Order
+
+The migrations run automatically in the correct order when you execute `yarn migrate`:
+
+1. Categories → Creates category hierarchy
+2. Products → Creates product records
+3. Product Categories → Links products to categories
+4. Product Images → Adds product images
+5. Product Translations → Adds translations
+6. Product Prices → Adds pricing data
+
+#### Magento 2 EAV Support
+
+The migration system fully supports Magento 2's EAV (Entity-Attribute-Value) structure:
+
+- Automatically discovers attribute IDs for product fields
+- Handles store-specific values (store_id = 0 for default)
+- Supports multi-language content through store views
+- Migrates complex product attributes and relationships
 
 ## Migration Structure
 
