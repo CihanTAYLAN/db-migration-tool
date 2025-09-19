@@ -123,6 +123,72 @@ class CategoriesMigration extends MigrationTemplate {
             }
 
             /**
+             * DEBUG: Kategori verilerini analiz et
+             */
+            logger.info('🔍 DEBUG: Analyzing category data...');
+
+            const codeMap = new Map();
+            const duplicateCodes = [];
+            const nullUrlKeys = [];
+            const urlKeyMap = new Map();
+
+            for (const category of categories) {
+                const code = category.url_key || `category-${category.entity_id}`;
+
+                // Code duplicate kontrolü
+                if (codeMap.has(code)) {
+                    duplicateCodes.push({
+                        code,
+                        first_entity_id: codeMap.get(code),
+                        second_entity_id: category.entity_id,
+                        first_url_key: categories.find(c => c.entity_id === codeMap.get(code))?.url_key,
+                        second_url_key: category.url_key
+                    });
+                } else {
+                    codeMap.set(code, category.entity_id);
+                }
+
+                // URL key duplicate kontrolü
+                if (category.url_key) {
+                    if (urlKeyMap.has(category.url_key)) {
+                        logger.warn(`⚠️  Duplicate url_key found: ${category.url_key} (entity_ids: ${urlKeyMap.get(category.url_key)}, ${category.entity_id})`);
+                    } else {
+                        urlKeyMap.set(category.url_key, category.entity_id);
+                    }
+                } else {
+                    nullUrlKeys.push(category.entity_id);
+                }
+
+                // Her 50 kategoride bir örnek log
+                if (category.entity_id % 50 === 0) {
+                    logger.info(`📋 Sample category: entity_id=${category.entity_id}, url_key=${category.url_key}, code=${code}, name=${category.name?.substring(0, 30)}...`);
+                }
+            }
+
+            logger.info(`📊 DEBUG Summary:
+- Total categories: ${categories.length}
+- Categories with null url_key: ${nullUrlKeys.length}
+- Unique codes generated: ${codeMap.size}
+- Duplicate codes found: ${duplicateCodes.length}
+- Unique url_keys: ${urlKeyMap.size}`);
+
+            if (duplicateCodes.length > 0) {
+                logger.warn('🚨 DUPLICATE CODES FOUND:');
+                duplicateCodes.slice(0, 10).forEach((dup, index) => {
+                    logger.warn(`  ${index + 1}. Code: ${dup.code}`);
+                    logger.warn(`     Entity IDs: ${dup.first_entity_id}, ${dup.second_entity_id}`);
+                    logger.warn(`     URL Keys: ${dup.first_url_key}, ${dup.second_url_key}`);
+                });
+                if (duplicateCodes.length > 10) {
+                    logger.warn(`  ... and ${duplicateCodes.length - 10} more duplicates`);
+                }
+            }
+
+            if (nullUrlKeys.length > 0) {
+                logger.info(`ℹ️  Categories with null url_key (first 10): ${nullUrlKeys.slice(0, 10).join(', ')}`);
+            }
+
+            /**
              * ADIM 3: Hedef Veritabanından Dil Bilgilerini Al ve Kontrol Et
              *
              * PostgreSQL hedef veritabanında mevcut dilleri kontrol eder.
