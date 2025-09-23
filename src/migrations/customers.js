@@ -97,8 +97,8 @@ class CustomersMigration extends MigrationTemplate {
             // Email extraction for password reset announcement
             await this.extractCustomerEmails();
 
-            // Order migration (optional)
-            // await this.migrateOrders();
+            // Order migration
+            await this.migrateOrders();
 
             // Update migration statistics
             this.migrationStats.endTime = new Date();
@@ -116,12 +116,15 @@ class CustomersMigration extends MigrationTemplate {
                 'customer_address_entity_decimal',
                 'customer_address_entity_text',
                 'sales_order',
+                'sales_order_item',
                 'sales_order_address'
             ];
             this.migrationStats.targetTables = [
                 'users',
                 'addresses',
                 'orders',
+                'order_items',
+                'order_prices',
                 'order_customers'
             ];
 
@@ -574,12 +577,24 @@ class CustomersMigration extends MigrationTemplate {
     }
 
     async migrateOrders() {
-        logger.info('Starting order migration (optional)...');
+        logger.info('Starting order migration...');
 
         try {
             // Get customer mapping from target database
             const targetUsers = await this.query('target', 'SELECT id, email FROM users');
             const userMap = new Map(targetUsers.map(u => [u.email, u.id]));
+
+            // Get existing guest mapping from target database
+            const targetGuests = await this.query('target', 'SELECT id, guest_uuid FROM guests');
+            const guestMap = new Map(targetGuests.map(g => [g.guest_uuid, g.id]));
+
+            // Get currency mapping from target database
+            const targetCurrencies = await this.query('target', 'SELECT id, code FROM currencies');
+            const currencyMap = new Map(targetCurrencies.map(c => [c.code, c.id]));
+
+            // Get product mapping from target database (SKU -> ID)
+            const targetProducts = await this.query('target', 'SELECT id, product_sku FROM products');
+            const productMap = new Map(targetProducts.map(p => [p.product_sku, p.id]));
 
             // Query orders with customer information
             const ordersQuery = `
@@ -588,6 +603,8 @@ class CustomersMigration extends MigrationTemplate {
                     so.increment_id,
                     so.customer_id,
                     ce.email as customer_email,
+                    ce.firstname as customer_firstname,
+                    ce.lastname as customer_lastname,
                     so.created_at,
                     so.updated_at,
                     so.status,
@@ -596,7 +613,16 @@ class CustomersMigration extends MigrationTemplate {
                     so.tax_amount,
                     so.shipping_amount,
                     so.discount_amount,
-                    so.total_qty_ordered
+                    so.total_qty_ordered,
+                    so.shipping_method,
+                    so.payment_authorization_amount,
+                    so.base_grand_total,
+                    so.base_subtotal,
+                    so.base_tax_amount,
+                    so.base_shipping_amount,
+                    so.base_discount_amount,
+                    so.order_currency_code,
+                    so.base_currency_code
                 FROM sales_order so
                 LEFT JOIN customer_entity ce ON so.customer_id = ce.entity_id
                 ORDER BY so.entity_id
@@ -618,62 +644,141 @@ class CustomersMigration extends MigrationTemplate {
                 const batch = orders.slice(i, i + BATCH_SIZE);
                 const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
 
-                const pgOrders = batch.map(o => {
-                    const userId = userMap.get(o.customer_email);
-                    if (!userId) return null;
+                const pgOrders = [];
+                const guestInserts = [];
 
-                    return {
+                for (const o of batch) {
+                    let userId = userMap.get(o.customer_email);
+                    let guestId = null;
+                    let customerType = 'LOGIN_USER';
+
+                    // If no registered user found and email is not null, create/use guest
+                    if (!userId && o.customer_email) {
+                        guestId = await this.ensureGuestExists(o.customer_email, o.customer_firstname, o.customer_lastname, o.created_at, guestMap);
+                        customerType = 'GUEST';
+                    } else if (!userId && !o.customer_email) {
+                        // Skip orders without email (likely test data or invalid guest orders)
+                        continue;
+                    }
+
+                    // Create order customer record
+                    const orderCustomerId = uuidv4();
+                    const orderCustomer = {
+                        id: orderCustomerId,
+                        first_name: o.customer_firstname || '',
+                        last_name: o.customer_lastname || '',
+                        email: o.customer_email,
+                        phone: null,
+                        phone_code: null,
+                        type: customerType,
+                        created_at: o.created_at,
+                        updated_at: o.updated_at,
+                        user_id: userId,
+                        guest_id: guestId
+                    };
+
+                    // Get currency information
+                    const orderCurrencyCode = o.order_currency_code || 'AUD'; // Default to AUD if not found
+                    const currencyId = currencyMap.get(orderCurrencyCode);
+
+                    // Create order price record
+                    const orderPriceId = uuidv4();
+                    const orderPrice = {
+                        id: orderPriceId,
+                        subtotal_fee: parseFloat(o.base_subtotal) || 0,
+                        shipping_fee: parseFloat(o.base_shipping_amount) || 0,
+                        purchase_method_fee: 0,
+                        additional_fee: 0,
+                        additional_fee_description: null,
+                        total_amount: parseFloat(o.base_grand_total) || 0,
+                        insurance_fee: 0,
+                        discount_fee: Math.abs(parseFloat(o.base_discount_amount) || 0),
+                        currency_code: orderCurrencyCode,
+                        final_price: parseFloat(o.base_grand_total) || 0,
+                        created_at: o.created_at,
+                        updated_at: o.updated_at,
+                        currency_id: currencyId || null
+                    };
+
+                    pgOrders.push({
                         id: uuidv4(),
                         order_no: o.increment_id,
                         payment_method: 'BANK_TRANSFER', // Default payment method
                         comment: null,
                         note: null,
-                        order_customer_id: null,
+                        order_customer_id: orderCustomerId,
                         tracking_number: null,
                         order_manual_id: null,
-                        order_price_id: uuidv4(), // Generate a dummy order_price_id
-                        status: o.status || 'PENDING',
+                        order_price_id: orderPriceId,
+                        status: this.mapOrderStatus(o.status),
                         invoice_date: null,
                         invoice_no: null,
                         invoice_url: null,
                         shipping_method: 'STANDARD', // Default shipping method
                         is_insurance: false,
                         is_send_order_confirmation_email: false,
-                        user_id: userId,
-                        total_amount: parseFloat(o.grand_total) || 0,
-                        subtotal: parseFloat(o.subtotal) || 0,
-                        tax_amount: parseFloat(o.tax_amount) || 0,
-                        shipping_amount: parseFloat(o.shipping_amount) || 0,
-                        discount_amount: parseFloat(o.discount_amount) || 0,
-                        quantity: parseInt(o.total_qty_ordered) || 0,
                         created_at: o.created_at,
-                        updated_at: o.updated_at
-                    };
-                }).filter(o => o !== null);
+                        updated_at: o.updated_at,
+                        _orderCustomer: orderCustomer, // Temporary storage for order customer
+                        _orderPrice: orderPrice, // Temporary storage for order price
+                        _sourceOrderId: o.entity_id // For order items lookup
+                    });
+                }
 
                 if (pgOrders.length === 0) continue;
 
-                // Insert into orders
-                const fieldCount = Object.keys(pgOrders[0]).length;
-                const placeholders = pgOrders.map((_, index) => {
-                    const start = index * fieldCount + 1;
-                    const params = Array.from({ length: fieldCount }, (_, i) => `$${start + i}`);
+                // Insert order prices first
+                const orderPrices = pgOrders.map(o => o._orderPrice);
+                const priceFieldCount = Object.keys(orderPrices[0]).length;
+                const pricePlaceholders = orderPrices.map((_, index) => {
+                    const start = index * priceFieldCount + 1;
+                    const params = Array.from({ length: priceFieldCount }, (_, i) => `$${start + i}`);
                     return `(${params.join(', ')})`;
                 }).join(', ');
 
-                const values = pgOrders.flatMap(o => Object.values(o));
+                const priceValues = orderPrices.flatMap(p => Object.values(p));
+                const priceFields = Object.keys(orderPrices[0]).join(', ');
+                const priceInsertQuery = `INSERT INTO order_prices (${priceFields}) VALUES ${pricePlaceholders}`;
 
-                const fields = Object.keys(pgOrders[0]).join(', ');
-                const insertQuery = `
-                    INSERT INTO orders (${fields})
-                    VALUES ${placeholders}
+                await this.query('target', priceInsertQuery, priceValues);
+
+                // Insert order customers
+                const orderCustomers = pgOrders.map(o => o._orderCustomer);
+                const customerFieldCount = Object.keys(orderCustomers[0]).length;
+                const customerPlaceholders = orderCustomers.map((_, index) => {
+                    const start = index * customerFieldCount + 1;
+                    const params = Array.from({ length: customerFieldCount }, (_, i) => `$${start + i}`);
+                    return `(${params.join(', ')})`;
+                }).join(', ');
+
+                const customerValues = orderCustomers.flatMap(c => Object.values(c));
+                const customerFields = Object.keys(orderCustomers[0]).join(', ');
+                const customerInsertQuery = `INSERT INTO order_customers (${customerFields}) VALUES ${customerPlaceholders}`;
+
+                await this.query('target', customerInsertQuery, customerValues);
+
+                // Insert orders
+                const orderFields = Object.keys(pgOrders[0]).filter(f => !f.startsWith('_'));
+                const orderFieldCount = orderFields.length;
+                const orderPlaceholders = pgOrders.map((_, index) => {
+                    const start = index * orderFieldCount + 1;
+                    const params = Array.from({ length: orderFieldCount }, (_, i) => `$${start + i}`);
+                    return `(${params.join(', ')})`;
+                }).join(', ');
+
+                const orderValues = pgOrders.flatMap(o => orderFields.map(f => o[f]));
+                const orderInsertQuery = `
+                    INSERT INTO orders (${orderFields.join(', ')})
+                    VALUES ${orderPlaceholders}
                     ON CONFLICT (order_no) DO UPDATE SET
                         status = EXCLUDED.status,
-                        total_amount = EXCLUDED.total_amount,
                         updated_at = EXCLUDED.updated_at
                 `;
 
-                await this.query('target', insertQuery, values);
+                await this.query('target', orderInsertQuery, orderValues);
+
+                // Migrate order items for this batch
+                await this.migrateOrderItemsBatch(pgOrders.map(o => o._sourceOrderId), productMap);
 
                 insertedCount += pgOrders.length;
                 logger.info(`Batch ${batchIndex}/${Math.ceil(orders.length / BATCH_SIZE)} completed (${insertedCount} orders)`);
@@ -684,6 +789,157 @@ class CustomersMigration extends MigrationTemplate {
             logger.success(`Order migration completed: ${insertedCount} orders inserted/updated`);
         } catch (error) {
             logger.error('Order migration failed', { error: error.message });
+        }
+    }
+
+    async ensureGuestExists(email, firstName, lastName, createdAt, guestMap) {
+        // Generate deterministic UUID from email
+        const guestUuid = uuidv4(email + 'guest');
+
+        // Check if guest already exists in our map
+        if (guestMap.has(guestUuid)) {
+            return guestMap.get(guestUuid);
+        }
+
+        // Check if guest exists in database
+        const existingGuest = await this.query('target', 'SELECT id FROM guests WHERE guest_uuid = $1', [guestUuid]);
+
+        if (existingGuest && existingGuest.length > 0) {
+            const guestId = existingGuest[0].id;
+            guestMap.set(guestUuid, guestId); // Add to map for future use
+            return guestId;
+        }
+
+        // Create new guest
+        const guestId = uuidv4();
+        const guest = {
+            id: guestId,
+            guest_uuid: guestUuid,
+            first_name: firstName || 'Guest',
+            last_name: lastName || 'User',
+            email: email,
+            phone: null,
+            phone_code: null,
+            ip_address: null,
+            user_agent: null,
+            device: null,
+            device_type: 'desktop', // Default
+            device_model: null,
+            created_at: createdAt,
+            updated_at: createdAt
+        };
+
+        // Insert guest
+        const fields = Object.keys(guest).join(', ');
+        const placeholders = Object.keys(guest).map((_, i) => `$${i + 1}`).join(', ');
+        const values = Object.values(guest);
+
+        await this.query('target', `INSERT INTO guests (${fields}) VALUES (${placeholders})`, values);
+
+        // Add to map
+        guestMap.set(guestUuid, guestId);
+
+        logger.info(`Created guest for email: ${email} (ID: ${guestId})`);
+        return guestId;
+    }
+
+    mapOrderStatus(magentoStatus) {
+        const statusMap = {
+            'pending': 'PENDING',
+            'processing': 'PROCESSING',
+            'complete': 'COMPLETE',
+            'closed': 'COMPLETE',
+            'canceled': 'CANCELED',
+            'holded': 'ON_HOLD',
+            'payment_review': 'PENDING' // Default to PENDING since PAYMENT_REVIEW doesn't exist
+        };
+        return statusMap[magentoStatus] || 'PENDING';
+    }
+
+    async migrateOrderItemsBatch(orderIds, productMap) {
+        if (orderIds.length === 0) return;
+
+        try {
+            // Get target orders mapping
+            const targetOrders = await this.query('target', `SELECT id, order_no FROM orders WHERE order_no IN (${orderIds.map((_, i) => `$${i + 1}`).join(', ')})`, orderIds);
+            const orderIdMap = new Map(targetOrders.map(o => [o.order_no, o.id]));
+
+            // Query order items
+            const itemsQuery = `
+                SELECT
+                    soi.item_id,
+                    soi.order_id,
+                    so.increment_id as order_increment_id,
+                    soi.product_id,
+                    soi.sku,
+                    soi.name,
+                    soi.qty_ordered,
+                    soi.price,
+                    soi.base_price,
+                    soi.row_total,
+                    soi.base_row_total,
+                    soi.product_type,
+                    soi.created_at,
+                    soi.updated_at
+                FROM sales_order_item soi
+                JOIN sales_order so ON soi.order_id = so.entity_id
+                WHERE soi.order_id IN (${orderIds.map((_, i) => `$${i + 1}`).join(', ')})
+                ORDER BY soi.item_id
+            `;
+
+            const orderItems = await this.query('source', itemsQuery, orderIds);
+
+            if (orderItems.length === 0) return;
+
+            // Batch insert order items
+            const BATCH_SIZE = 500;
+            let insertedCount = 0;
+
+            for (let i = 0; i < orderItems.length; i += BATCH_SIZE) {
+                const batch = orderItems.slice(i, i + BATCH_SIZE);
+
+                const pgOrderItems = batch.map(item => {
+                    const orderId = orderIdMap.get(item.order_increment_id);
+                    const productId = productMap.get(item.sku);
+
+                    if (!orderId || !productId) return null; // Skip if order or product not found
+
+                    return {
+                        id: uuidv4(),
+                        provider_name: null,
+                        provider_image: null,
+                        coin_degree: null,
+                        quantity: parseInt(item.qty_ordered) || 1,
+                        price: parseFloat(item.price) || 0,
+                        order_id: orderId,
+                        product_id: productId,
+                        created_at: item.created_at,
+                        updated_at: item.updated_at
+                    };
+                }).filter(item => item !== null);
+
+                if (pgOrderItems.length === 0) continue;
+
+                // Insert order items
+                const fieldCount = Object.keys(pgOrderItems[0]).length;
+                const placeholders = pgOrderItems.map((_, index) => {
+                    const start = index * fieldCount + 1;
+                    const params = Array.from({ length: fieldCount }, (_, i) => `$${start + i}`);
+                    return `(${params.join(', ')})`;
+                }).join(', ');
+
+                const values = pgOrderItems.flatMap(item => Object.values(item));
+                const fields = Object.keys(pgOrderItems[0]).join(', ');
+                const insertQuery = `INSERT INTO order_items (${fields}) VALUES ${placeholders}`;
+
+                await this.query('target', insertQuery, values);
+
+                insertedCount += pgOrderItems.length;
+            }
+
+            logger.info(`Migrated ${insertedCount} order items for orders: ${orderIds.join(', ')}`);
+        } catch (error) {
+            logger.error('Order items migration failed', { error: error.message });
         }
     }
 
