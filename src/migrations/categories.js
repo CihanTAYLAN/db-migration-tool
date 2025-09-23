@@ -69,6 +69,67 @@ class CategoriesMigration extends MigrationTemplate {
 
             logger.info(`Attribute IDs - name: ${nameAttrId}, url_key: ${urlKeyAttrId}, description: ${descriptionAttrId}, meta_title: ${metaTitleAttrId}, meta_description: ${metaDescriptionAttrId}, meta_keywords: ${metaKeywordsAttrId}, is_active: ${isActiveAttrId}`);
 
+            // 🔍 DEBUG: Analyze duplicate url_keys in source database
+            if (urlKeyAttrId) {
+                logger.info('🔍 Analyzing duplicate url_keys in source database...');
+
+                const duplicateUrlKeysQuery = `
+                    SELECT
+                        ccev.value as url_key,
+                        COUNT(*) as count,
+                        GROUP_CONCAT(cce.entity_id) as entity_ids,
+                        GROUP_CONCAT(cce.parent_id) as parent_ids,
+                        GROUP_CONCAT(ccev.store_id) as store_ids
+                    FROM catalog_category_entity_varchar ccev
+                    JOIN catalog_category_entity cce ON ccev.entity_id = cce.entity_id
+                    WHERE ccev.attribute_id = ?
+                    AND cce.entity_id > 1
+                    GROUP BY ccev.value
+                    HAVING COUNT(*) > 1
+                    ORDER BY COUNT(*) DESC, ccev.value
+                `;
+
+                const duplicateUrlKeys = await this.query('source', duplicateUrlKeysQuery, [urlKeyAttrId]);
+                logger.info(`Found ${duplicateUrlKeys.length} duplicate url_key groups in source database`);
+
+                if (duplicateUrlKeys.length > 0) {
+                    logger.warn('🚨 DUPLICATE URL KEYS FOUND:');
+                    duplicateUrlKeys.slice(0, 10).forEach((dup, index) => {
+                        logger.warn(`  ${index + 1}. URL Key: "${dup.url_key}" (${dup.count} times)`);
+                        logger.warn(`     Entity IDs: ${dup.entity_ids}`);
+                        logger.warn(`     Parent IDs: ${dup.parent_ids}`);
+                        logger.warn(`     Store IDs: ${dup.store_ids}`);
+                    });
+
+                    if (duplicateUrlKeys.length > 10) {
+                        logger.warn(`  ... and ${duplicateUrlKeys.length - 10} more duplicate groups`);
+                    }
+                } else {
+                    logger.info('✅ No duplicate url_keys found in source database');
+                }
+
+                // Analyze store-specific url_keys
+                const storeSpecificQuery = `
+                    SELECT
+                        ccev.store_id,
+                        COUNT(*) as total_categories,
+                        COUNT(DISTINCT ccev.value) as unique_url_keys,
+                        (COUNT(*) - COUNT(DISTINCT ccev.value)) as duplicates
+                    FROM catalog_category_entity_varchar ccev
+                    JOIN catalog_category_entity cce ON ccev.entity_id = cce.entity_id
+                    WHERE ccev.attribute_id = ?
+                    AND cce.entity_id > 1
+                    GROUP BY ccev.store_id
+                    ORDER BY ccev.store_id
+                `;
+
+                const storeAnalysis = await this.query('source', storeSpecificQuery, [urlKeyAttrId]);
+                logger.info('📊 Store-specific URL key analysis:');
+                storeAnalysis.forEach(store => {
+                    logger.info(`  Store ID ${store.store_id}: ${store.total_categories} categories, ${store.unique_url_keys} unique, ${store.duplicates} duplicates`);
+                });
+            }
+
             /**
              * ADIM 2: Ana Kategori Sorgusu - Magento EAV Yapısından Düz Veri Çekme
              *
@@ -102,13 +163,13 @@ class CategoriesMigration extends MigrationTemplate {
                     ccevkw.value as meta_keywords,
                     ccevia.value as is_active
                 FROM catalog_category_entity cce
-                LEFT JOIN catalog_category_entity_varchar ccev ON cce.entity_id = ccev.entity_id AND ccev.attribute_id = ? AND ccev.store_id = 0
-                LEFT JOIN catalog_category_entity_varchar ccevu ON cce.entity_id = ccevu.entity_id AND ccevu.attribute_id = ? AND ccevu.store_id = 0
-                LEFT JOIN catalog_category_entity_text ccevd ON cce.entity_id = ccevd.entity_id AND ccevd.attribute_id = ? AND ccevd.store_id = 0
-                LEFT JOIN catalog_category_entity_varchar ccevmt ON cce.entity_id = ccevmt.entity_id AND ccevmt.attribute_id = ? AND ccevmt.store_id = 0
-                LEFT JOIN catalog_category_entity_varchar ccevmd ON cce.entity_id = ccevmd.entity_id AND ccevmd.attribute_id = ? AND ccevmd.store_id = 0
-                LEFT JOIN catalog_category_entity_text ccevkw ON cce.entity_id = ccevkw.entity_id AND ccevkw.attribute_id = ? AND ccevkw.store_id = 0
-                LEFT JOIN catalog_category_entity_int ccevia ON cce.entity_id = ccevia.entity_id AND ccevia.attribute_id = ? AND ccevia.store_id = 0
+                LEFT JOIN catalog_category_entity_varchar ccev ON cce.entity_id = ccev.entity_id AND ccev.attribute_id = ? AND (ccev.store_id = 0 OR ccev.store_id IS NULL)
+                LEFT JOIN catalog_category_entity_varchar ccevu ON cce.entity_id = ccevu.entity_id AND ccevu.attribute_id = ? AND (ccevu.store_id = 0 OR ccevu.store_id IS NULL)
+                LEFT JOIN catalog_category_entity_text ccevd ON cce.entity_id = ccevd.entity_id AND ccevd.attribute_id = ? AND (ccevd.store_id = 0 OR ccevd.store_id IS NULL)
+                LEFT JOIN catalog_category_entity_varchar ccevmt ON cce.entity_id = ccevmt.entity_id AND ccevmt.attribute_id = ? AND (ccevmt.store_id = 0 OR ccevmt.store_id IS NULL)
+                LEFT JOIN catalog_category_entity_varchar ccevmd ON cce.entity_id = ccevmd.entity_id AND ccevmd.attribute_id = ? AND (ccevmd.store_id = 0 OR ccevmd.store_id IS NULL)
+                LEFT JOIN catalog_category_entity_text ccevkw ON cce.entity_id = ccevkw.entity_id AND ccevkw.attribute_id = ? AND (ccevkw.store_id = 0 OR ccevkw.store_id IS NULL)
+                LEFT JOIN catalog_category_entity_int ccevia ON cce.entity_id = ccevia.entity_id AND ccevia.attribute_id = ? AND (ccevia.store_id = 0 OR ccevia.store_id IS NULL)
                 WHERE cce.entity_id > 1
                 ORDER BY cce.level, cce.position, cce.entity_id
             `;

@@ -49,6 +49,93 @@ program
     });
 
 program
+    .command('source-db-config')
+    .description('Show source database configuration')
+    .action(() => {
+        logger.info('Source Database Configuration');
+        logger.info(`URL: ${process.env.SOURCE_DATABASE_URL || 'Not set'}`);
+        logger.info(`Type: ${process.env.SOURCE_DB_TYPE || 'Not set'}`);
+    });
+
+program
+    .command('target-db-config')
+    .description('Show target database configuration')
+    .action(() => {
+        logger.info('Target Database Configuration');
+        logger.info(`URL: ${process.env.TARGET_DATABASE_URL || 'Not set'}`);
+        logger.info(`Type: ${process.env.TARGET_DB_TYPE || 'Not set'}`);
+    });
+
+program
+    .command('migration-list')
+    .description('List all available migrations')
+    .action(() => {
+        logger.info('Available Migrations');
+
+        const migrationDir = path.join(__dirname, '../migrations');
+
+        if (!fs.existsSync(migrationDir)) {
+            logger.error('Migration directory not found');
+            return;
+        }
+
+        const files = fs.readdirSync(migrationDir).filter(file => file.endsWith('.js') && file !== 'template.js');
+
+        if (files.length === 0) {
+            logger.warning('No migration files found');
+            return;
+        }
+
+        files.forEach((file, index) => {
+            const migrationPath = path.join(migrationDir, file);
+            const stats = fs.statSync(migrationPath);
+            const size = (stats.size / 1024).toFixed(2);
+            logger.info(`${index + 1}. ${file} (${size} KB)`);
+        });
+
+        logger.success(`Total ${files.length} migration files found`);
+    });
+
+program
+    .command('run-migration <migrationName>')
+    .description('Run a specific migration by name (without .js extension)')
+    .action(async (migrationName) => {
+        logger.info(`Running specific migration: ${migrationName}`);
+
+        const migrationDir = path.join(__dirname, '../migrations');
+        const migrationFile = `${migrationName}.js`;
+        const migrationPath = path.join(migrationDir, migrationFile);
+
+        if (!fs.existsSync(migrationPath)) {
+            logger.error(`Migration file not found: ${migrationFile}`);
+            return;
+        }
+
+        const migrationModule = require(migrationPath);
+
+        if (migrationModule && migrationModule.default) {
+            const MigrationClass = migrationModule.default;
+            const migrationInstance = new MigrationClass(
+                process.env.SOURCE_DATABASE_URL,
+                process.env.SOURCE_DB_TYPE,
+                process.env.TARGET_DATABASE_URL,
+                process.env.TARGET_DB_TYPE
+            );
+
+            try {
+                await migrationInstance.run();
+                logger.success(`${migrationFile} completed successfully`);
+            } catch (error) {
+                logger.error(`${migrationFile} failed`, { error: error.message });
+                process.exit(1);
+            }
+        } else {
+            logger.error(`Invalid migration file: ${migrationFile} - no default export found`);
+            process.exit(1);
+        }
+    });
+
+program
     .command('migrate')
     .description('Run all migrations in correct order')
     .action(async () => {
@@ -64,6 +151,7 @@ program
         // Define migration order for proper dependency handling
         const migrationOrder = [
             'categories.js',
+            'customers.js',
             'products.js',
             'product_categories.js',
             'product_images.js',
@@ -114,53 +202,4 @@ program
 
         logger.success('All migrations completed');
     });
-
-program
-    .command('source-db-config')
-    .description('Show source database configuration')
-    .action(() => {
-        logger.info('Source Database Configuration');
-        logger.info(`URL: ${process.env.SOURCE_DATABASE_URL || 'Not set'}`);
-        logger.info(`Type: ${process.env.SOURCE_DB_TYPE || 'Not set'}`);
-    });
-
-program
-    .command('target-db-config')
-    .description('Show target database configuration')
-    .action(() => {
-        logger.info('Target Database Configuration');
-        logger.info(`URL: ${process.env.TARGET_DATABASE_URL || 'Not set'}`);
-        logger.info(`Type: ${process.env.TARGET_DB_TYPE || 'Not set'}`);
-    });
-
-program
-    .command('migration-list')
-    .description('List all available migrations')
-    .action(() => {
-        logger.info('Available Migrations');
-
-        const migrationDir = path.join(__dirname, '../migrations');
-
-        if (!fs.existsSync(migrationDir)) {
-            logger.error('Migration directory not found');
-            return;
-        }
-
-        const files = fs.readdirSync(migrationDir).filter(file => file.endsWith('.js') && file !== 'template.js');
-
-        if (files.length === 0) {
-            logger.warning('No migration files found');
-            return;
-        }
-
-        files.forEach((file, index) => {
-            const migrationPath = path.join(migrationDir, file);
-            const stats = fs.statSync(migrationPath);
-            const size = (stats.size / 1024).toFixed(2);
-            logger.info(`${index + 1}. ${file} (${size} KB)`);
-        });
-
-        logger.success(`Total ${files.length} migration files found`);
-    });
-
 program.parse();

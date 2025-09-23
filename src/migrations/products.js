@@ -422,7 +422,7 @@ class ProductsMigration extends MigrationTemplate {
                 const values = batch.flatMap(t => Object.values(t));
                 const fields = Object.keys(batch[0]).join(', ');
 
-                await this.query('target', `INSERT INTO product_translations (${fields}) VALUES ${placeholders}`, values);
+                await this.query('target', `INSERT INTO product_translations (${fields}) VALUES ${placeholders} ON CONFLICT (language_id, slug) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description, short_description = EXCLUDED.short_description, meta_title = EXCLUDED.meta_title, meta_description = EXCLUDED.meta_description, meta_keywords = EXCLUDED.meta_keywords, updated_at = EXCLUDED.updated_at`, values);
             }
 
             logger.success(`Product translations migration completed: ${translations.length} translations inserted`);
@@ -906,7 +906,7 @@ class ProductsMigration extends MigrationTemplate {
                 const values = batch.flatMap(p => Object.values(p));
                 const fields = Object.keys(batch[0]).join(', ');
 
-                await this.query('target', `INSERT INTO product_prices (${fields}) VALUES ${placeholders}`, values);
+                await this.query('target', `INSERT INTO product_prices (${fields}) VALUES ${placeholders} ON CONFLICT (product_id, currency_id) DO UPDATE SET base_amount = EXCLUDED.base_amount, amount = EXCLUDED.amount, updated_at = EXCLUDED.updated_at`, values);
             }
 
             logger.success(`Product prices migration completed: ${prices.length} prices inserted`);
