@@ -404,6 +404,13 @@ class CustomersMigration extends MigrationTemplate {
                 return;
             }
 
+            // Clean up duplicates before creating unique index
+            await this.query('target', 'DELETE FROM addresses a USING (SELECT MIN(id) as min_id, user_id, address_line, COALESCE(post_code, \'\') as pc FROM addresses GROUP BY user_id, address_line, COALESCE(post_code, \'\') HAVING COUNT(*) > 1) b WHERE a.user_id = b.user_id AND a.address_line = b.address_line AND COALESCE(a.post_code, \'\') = b.pc AND a.id > b.min_id');
+
+            // Create unique index for upsert functionality
+            await this.query('target', 'DROP INDEX IF EXISTS idx_addresses_user_address');
+            await this.query('target', 'CREATE UNIQUE INDEX idx_addresses_user_address ON addresses (user_id, address_line, COALESCE(post_code, \'\'))');
+
             // Batch insert addresses
             const BATCH_SIZE = 500;
             let insertedCount = 0;
@@ -412,13 +419,22 @@ class CustomersMigration extends MigrationTemplate {
                 const batch = addresses.slice(i, i + BATCH_SIZE);
                 const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
 
-                const pgAddresses = batch.map(a => {
+                const addressMap = new Map();
+                let skippedCount = 0;
+
+                batch.forEach(a => {
                     const userData = userMap.get(a.customer_email);
-                    if (!userData) return null;
+                    if (!userData) {
+                        skippedCount++;
+                        return;
+                    }
 
                     // Lookup country ID from ISO code
                     const countryId = countryMap.get(a.country_id) || countryMap.get('US'); // Default to US if not found
-                    if (!countryId) return null; // Skip if no valid country
+                    if (!countryId) {
+                        skippedCount++;
+                        return; // Skip if no valid country
+                    }
 
                     // Lookup city ID (simplified - match by name and country)
                     const cityKey = `${a.city}-${countryId}`;
@@ -432,7 +448,10 @@ class CustomersMigration extends MigrationTemplate {
                         }
                     }
 
-                    if (!cityId) return null; // Skip if no valid city
+                    if (!cityId) {
+                        skippedCount++;
+                        return; // Skip if no valid city
+                    }
 
                     // Parse street address - Magento stores it as multi-line or JSON
                     let addressLine = '';
@@ -447,27 +466,38 @@ class CustomersMigration extends MigrationTemplate {
                         addressLine3 = streetLines[2] || null;
                     }
 
-                    return {
-                        id: uuidv4(),
-                        first_name: a.firstname || userData.firstName || '',
-                        last_name: a.lastname || userData.lastName || '',
-                        company_name: a.company,
-                        phone: a.telephone,
-                        phone_code: null,
-                        address_line: addressLine,
-                        address_line2: addressLine2,
-                        address_line3: addressLine3,
-                        post_code: a.postcode,
-                        state_province: a.region,
-                        town: a.city,
-                        is_default: false,
-                        user_id: userData.id,
-                        country_id: countryId,
-                        city_id: cityId,
-                        created_at: a.created_at,
-                        updated_at: a.updated_at
-                    };
-                }).filter(a => a !== null);
+                    const postCode = a.postcode || '';
+                    const key = `${userData.id}-${addressLine}-${postCode}`;
+
+                    if (!addressMap.has(key)) {
+                        addressMap.set(key, {
+                            id: uuidv4(),
+                            first_name: a.firstname || userData.firstName || '',
+                            last_name: a.lastname || userData.lastName || '',
+                            company_name: a.company,
+                            phone: a.telephone,
+                            phone_code: null,
+                            address_line: addressLine,
+                            address_line2: addressLine2,
+                            address_line3: addressLine3,
+                            post_code: a.postcode,
+                            state_province: a.region,
+                            town: a.city,
+                            is_default: false,
+                            user_id: userData.id,
+                            country_id: countryId,
+                            city_id: cityId,
+                            created_at: a.created_at,
+                            updated_at: a.updated_at
+                        });
+                    }
+                });
+
+                if (skippedCount > 0) {
+                    logger.info(`Batch ${batchIndex}: ${skippedCount} addresses skipped due to missing user/country/city data`);
+                }
+
+                const pgAddresses = Array.from(addressMap.values());
 
                 if (pgAddresses.length === 0) continue;
 
@@ -485,7 +515,20 @@ class CustomersMigration extends MigrationTemplate {
                 const insertQuery = `
                     INSERT INTO addresses (${fields})
                     VALUES ${placeholders}
-                    ON CONFLICT DO NOTHING
+                    ON CONFLICT (user_id, address_line, COALESCE(post_code, '')) DO UPDATE SET
+                        first_name = EXCLUDED.first_name,
+                        last_name = EXCLUDED.last_name,
+                        company_name = EXCLUDED.company_name,
+                        phone = EXCLUDED.phone,
+                        phone_code = EXCLUDED.phone_code,
+                        address_line2 = EXCLUDED.address_line2,
+                        address_line3 = EXCLUDED.address_line3,
+                        state_province = EXCLUDED.state_province,
+                        town = EXCLUDED.town,
+                        is_default = EXCLUDED.is_default,
+                        country_id = EXCLUDED.country_id,
+                        city_id = EXCLUDED.city_id,
+                        updated_at = EXCLUDED.updated_at
                 `;
 
                 await this.query('target', insertQuery, values);
@@ -496,7 +539,7 @@ class CustomersMigration extends MigrationTemplate {
 
             this.migrationStats.addressesFound = addresses.length;
             this.migrationStats.addressesInserted = insertedCount;
-            logger.success(`Address migration completed: ${insertedCount} addresses inserted`);
+            logger.success(`Address migration completed: ${insertedCount} addresses inserted/updated`);
         } catch (error) {
             logger.error('Address migration failed', { error: error.message });
         }
