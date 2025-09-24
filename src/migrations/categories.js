@@ -339,7 +339,8 @@ class CategoriesMigration extends MigrationTemplate {
 
                 for (const category of batch) {
                     const id = uuidv4();
-                    const code = category.url_key || `category-${category.entity_id}`;
+                    // Code'u unique yapmak için entity_id'yi dahil et
+                    const code = category.url_key ? `${category.url_key}_${category.entity_id}` : `category-${category.entity_id}`;
 
                     // Mapping'e kaydet - parent-child ilişkileri için gerekli
                     categoryMapping.set(category.entity_id, { id, code });
@@ -466,16 +467,19 @@ class CategoriesMigration extends MigrationTemplate {
                             const translationInsertQuery = `
                                 INSERT INTO category_translations (${translationColumns.join(', ')})
                                 VALUES (${placeholders})
-                                ON CONFLICT (language_id, slug) DO UPDATE SET
-                                    title = EXCLUDED.title,
-                                    description = EXCLUDED.description,
-                                    meta_title = EXCLUDED.meta_title,
-                                    meta_description = EXCLUDED.meta_description,
-                                    meta_keywords = EXCLUDED.meta_keywords,
-                                    updated_at = EXCLUDED.updated_at
+                                ON CONFLICT DO NOTHING
                             `;
 
-                            await this.query('target', translationInsertQuery, values);
+                            const result = await this.query('target', translationInsertQuery, values);
+                            if (result && result.rowCount === 0) {
+                                // Eğer insert başarısız olduysa (duplicate), update dene
+                                const updateQuery = `
+                                    UPDATE category_translations
+                                    SET title = $1, description = $2, meta_title = $3, meta_description = $4, meta_keywords = $5, updated_at = $6
+                                    WHERE category_id = $7 AND language_id = $8
+                                `;
+                                await this.query('target', updateQuery, [translation.title, translation.description, translation.meta_title, translation.meta_description, translation.meta_keywords, translation.updated_at, translation.category_id, translation.language_id]);
+                            }
                             translationInserted++;
                         } catch (error) {
                             logger.warn(`Failed to insert/update category translation for category ${translation.category_id}: ${error.message}`);
@@ -490,17 +494,18 @@ class CategoriesMigration extends MigrationTemplate {
             }
 
             /**
-             * ADIM 7: Parent-Child İlişkilerini Güncelleme
+             * ADIM 7: Parent-Child İlişkilerini Güncelleme ve Hiyerarşik Slug Hesaplama
              *
              * Tüm kategoriler eklendikten sonra parent-child ilişkilerini kurar.
              * Magento'daki hiyerarşik yapıyı PostgreSQL'de yeniden oluşturur.
              *
              * İşlemler:
              * 1. categories tablosunda parent_id alanını güncelle
-             * 2. category_translations tablosunda parent_slugs alanını güncelle
+             * 2. category_translations tablosunda parent_slugs alanını hiyerarşik olarak güncelle
              */
-            logger.info('Updating parent relationships and parent_slugs...');
+            logger.info('Updating parent relationships and calculating hierarchical parent_slugs...');
 
+            // Önce tüm parent-child ilişkilerini güncelle
             for (const category of categories) {
                 if (category.parent_id > 1) { // Root category hariç
                     const currentCategory = categoryMapping.get(category.entity_id);
@@ -513,22 +518,98 @@ class CategoriesMigration extends MigrationTemplate {
                             SET parent_id = $1, updated_at = NOW()
                             WHERE id = $2
                         `, [parentCategory.id, currentCategory.id]);
+                    }
+                }
+            }
 
-                        // Category_translations tablosunda parent_slugs'u güncelle
-                        const parentSlugResult = await this.query('target', `
-                            SELECT slug FROM category_translations
-                            WHERE category_id = $1 AND language_id = $2
-                        `, [parentCategory.id, defaultLanguageId]);
+            // Helper fonksiyon: Kategorinin hiyerarşik path'ini hesapla
+            const getHierarchicalPath = async (categoryId, languageId) => {
+                const category = categories.find(c => categoryMapping.get(c.entity_id)?.id === categoryId);
+                if (!category) return null;
 
-                        if (parentSlugResult && parentSlugResult.length > 0) {
-                            const parentSlug = parentSlugResult[0].slug;
-                            await this.query('target', `
-                                UPDATE category_translations
-                                SET parent_slugs = $1, updated_at = NOW()
-                                WHERE category_id = $2 AND language_id = $3
-                            `, [parentSlug, currentCategory.id, defaultLanguageId]);
+                if (category.parent_id <= 1) {
+                    // Root kategori
+                    return null;
+                }
+
+                // Parent'ın path'ini al
+                const parentMapping = categoryMapping.get(category.parent_id);
+                if (!parentMapping) return null;
+
+                const parentPath = await getHierarchicalPath(parentMapping.id, languageId);
+
+                // Parent'ın slug'unu al
+                const parentSlugResult = await this.query('target', `
+                    SELECT slug FROM category_translations
+                    WHERE category_id = $1 AND language_id = $2
+                `, [parentMapping.id, languageId]);
+
+                if (parentSlugResult && parentSlugResult.length > 0) {
+                    const parentSlug = parentSlugResult[0].slug;
+                    return parentPath ? `${parentPath}/${parentSlug}` : parentSlug;
+                }
+
+                return null;
+            };
+
+            // Şimdi hiyerarşik parent_slugs hesapla
+            // Root kategorilerden başlayarak recursive olarak hesapla
+            const processedCategories = new Set();
+
+            const calculateParentSlugs = async (categoryId, languageId) => {
+                if (processedCategories.has(categoryId)) {
+                    return;
+                }
+
+                const category = categories.find(c => categoryMapping.get(c.entity_id)?.id === categoryId);
+                if (!category) return;
+
+                // Bu kategorinin parent_slugs'unu hesapla (parent'ın hiyerarşik path'i)
+                const parentSlugs = await getHierarchicalPath(categoryId, languageId);
+
+                // Bu kategorinin parent_slugs'unu güncelle
+                try {
+                    // Önce bu parent_slugs'ın zaten kullanılıp kullanılmadığını kontrol et
+                    if (parentSlugs) {
+                        const existing = await this.query('target', `
+                            SELECT id FROM category_translations
+                            WHERE language_id = $1 AND parent_slugs = $2 AND category_id != $3
+                        `, [languageId, parentSlugs, categoryId]);
+
+                        if (existing && existing.length > 0) {
+                            logger.warn(`Skipping duplicate parent_slugs: ${parentSlugs} for category ${categoryId} (already used by category ${existing[0].id})`);
+                            parentSlugs = null; // Duplicate ise null bırak
                         }
                     }
+
+                    await this.query('target', `
+                        UPDATE category_translations
+                        SET parent_slugs = $1, updated_at = NOW()
+                        WHERE category_id = $2 AND language_id = $3
+                    `, [parentSlugs, categoryId, languageId]);
+                } catch (error) {
+                    logger.warn(`Failed to update parent_slugs for category ${categoryId}: ${error.message}`);
+                    // Continue with next category
+                }
+
+                processedCategories.add(categoryId);
+
+                // Bu kategorinin çocuklarını recursive olarak işle
+                const children = categories.filter(c => c.parent_id === category.entity_id);
+                for (const child of children) {
+                    const childMapping = categoryMapping.get(child.entity_id);
+                    if (childMapping) {
+                        await calculateParentSlugs(childMapping.id, languageId);
+                    }
+                }
+            };
+
+            // Root kategorilerden başla (parent_id = 1 olanlar)
+            const rootCategories = categories.filter(c => c.parent_id === 1);
+            for (const rootCategory of rootCategories) {
+                const rootMapping = categoryMapping.get(rootCategory.entity_id);
+                if (rootMapping) {
+                    await calculateParentSlugs(rootMapping.id, defaultLanguageId);
                 }
             }
 
