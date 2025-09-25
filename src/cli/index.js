@@ -138,6 +138,25 @@ program
     });
 
 program
+    .command('merge-subcategories')
+    .description('Merge duplicate subcategories based on slug prefixes')
+    .action(async () => {
+        try {
+            logger.info('Starting subcategory merge process...');
+            const SubcategoryMerger = require('../migrationsv2/merge-subcategories');
+            const mergerInstance = new SubcategoryMerger(
+                process.env.TARGET_DATABASE_URL,
+                process.env.TARGET_DB_TYPE
+            );
+            await mergerInstance.run();
+            logger.success('Subcategory merge completed successfully');
+        } catch (error) {
+            logger.error('Subcategory merge failed', { error: error.message });
+            process.exit(1);
+        }
+    });
+
+program
     .command('migrate')
     .description('Run all migrations in correct order')
     .action(async () => {
@@ -158,6 +177,15 @@ program
                 process.env.TARGET_DB_TYPE
             );
             await migrationInstance.run();
+
+            // Migration V2 tamamlandıktan sonra alt kategori birleştirme işlemini çalıştır
+            logger.info('Running subcategory merge after migration V2...');
+            const SubcategoryMerger = require('../migrationsv2/merge-subcategories');
+            const mergerInstance = new SubcategoryMerger(
+                process.env.TARGET_DATABASE_URL,
+                process.env.TARGET_DB_TYPE
+            );
+            await mergerInstance.run();
             // } else {
             //     logger.info('Starting migration process with legacy system...');
 

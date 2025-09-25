@@ -30,11 +30,6 @@ Bu dosya, proje için ajan kurallarını tanımlar. Alt klasör AGENTS.md overri
 - Migrations: Idempotent, rollback support.
 - Log: Sensitive maskele (passwords [REDACTED]).
 
-## Deployment
-- Package: yarn pack veya npm publish.
-- Env: DB_HOST, DB_USER vb.; secrets vault.
-- Docker: Dockerfile ekle for CLI.
-
 ## Dil & Yorum
 - Kod yorum: İngilizce.
 - Doküman: Türkçe.

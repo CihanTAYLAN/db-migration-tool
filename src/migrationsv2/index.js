@@ -119,7 +119,7 @@ class MigrationV2 {
 
         logger.info(`Attribute IDs loaded: name=${nameAttrId}, url_key=${urlKeyAttrId}, etc.`);
 
-        // Get categories from source (exclude root and Latest Coins)
+        // Get categories from source (exclude root, Default Category, Coins for sale, Sold coin archive, Latest coins)
         const categoriesQuery = `
             SELECT
                 cce.entity_id,
@@ -142,7 +142,7 @@ class MigrationV2 {
             LEFT JOIN catalog_category_entity_varchar ccevmd ON cce.entity_id = ccevmd.entity_id AND ccevmd.attribute_id = ? AND (ccevmd.store_id = 0 OR ccevmd.store_id IS NULL)
             LEFT JOIN catalog_category_entity_text ccevkw ON cce.entity_id = ccevkw.entity_id AND ccevkw.attribute_id = ? AND (ccevkw.store_id = 0 OR ccevkw.store_id IS NULL)
             LEFT JOIN catalog_category_entity_int ccevia ON cce.entity_id = ccevia.entity_id AND ccevia.attribute_id = ? AND (ccevia.store_id = 0 OR ccevia.store_id IS NULL)
-            WHERE cce.entity_id > 1 AND cce.entity_id != 6
+            WHERE cce.entity_id NOT IN (1, 2, 3, 5, 6)
             ORDER BY cce.level, cce.position, cce.entity_id
         `;
 
@@ -164,8 +164,8 @@ class MigrationV2 {
         const categoryMapping = new Map();
         const processedCategories = new Set();
 
-        // Start from root level (parent_id = 1)
-        const rootCategories = categories.filter(c => c.parent_id === 1);
+        // Start from root level (level = 3, since level 0-2 are excluded)
+        const rootCategories = categories.filter(c => c.level === 3);
         for (const rootCategory of rootCategories) {
             await this.processCategoryRecursive(rootCategory, categories, categoryMapping, processedCategories, defaultLanguageId);
         }
@@ -276,7 +276,7 @@ class MigrationV2 {
         }
 
         // Process products in this category (tree-based migration)
-        await this.processCategoryProducts(category.entity_id, actualCategoryId, defaultLanguageId);
+        // await this.processCategoryProducts(category.entity_id, actualCategoryId, defaultLanguageId);
     }
 
     async migrateProducts() {
@@ -858,9 +858,9 @@ class MigrationV2 {
                 await this.migrateProductBatch(batch, targetCategoryId, defaultLanguageId);
 
                 // Process orders for each product in this batch
-                // for (const product of batch) {
-                //     await this.processProductOrders(product.entity_id, defaultLanguageId);
-                // }
+                for (const product of batch) {
+                    await this.processProductOrders(product.entity_id, defaultLanguageId);
+                }
             }
 
             logger.info(`Completed processing ${products.length} products for category ${sourceCategoryId}`);
@@ -889,7 +889,7 @@ class MigrationV2 {
                 coin_grade_text: p.grade_prefix ? (p.grade_value ? ' ' + p.grade_value : '') + (p.grade_suffix ? ' ' + p.grade_suffix : '') || null : null, // Full grade text
                 year_text: p.year || null,
                 coin_grade_prefix_type: null,
-                year_date: new Date(p.year) || null,
+                year_date: p.year && !isNaN(parseInt(p.year)) ? new Date(parseInt(p.year), 0, 1) : null,
                 is_second_hand: false,
                 is_consignment: false,
                 is_active: true,
@@ -1011,9 +1011,9 @@ class MigrationV2 {
             console.log(`🛒 Found ${orders.length} orders for product ${sourceProductId}`);
 
             // Process each order (migrate order and customer if needed)
-            // for (const order of orders) {
-            //     await this.migrateOrderAndCustomer(order, defaultLanguageId);
-            // }
+            for (const order of orders) {
+                await this.migrateOrderAndCustomer(order, defaultLanguageId);
+            }
 
         } catch (error) {
             logger.error(`Failed to process orders for product ${sourceProductId}`, { error: error.message });
@@ -1031,10 +1031,11 @@ class MigrationV2 {
                 } else {
                     // Create new customer
                     customerId = uuidv4();
+                    const userCode = `CUST-${customerId.substring(0, 8).toUpperCase()}`;
                     await this.targetDb.query(`
-                        INSERT INTO users (id, email, first_name, last_name, created_at, updated_at)
-                        VALUES ($1, $2, $3, $4, $5, $6)
-                    `, [customerId, orderData.customer_email, orderData.customer_firstname, orderData.customer_lastname, orderData.created_at, orderData.updated_at]);
+                        INSERT INTO users (id, user_code, email, first_name, last_name, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    `, [customerId, userCode, orderData.customer_email, orderData.customer_firstname, orderData.customer_lastname, orderData.created_at, orderData.updated_at]);
 
                     // Assign default role
                     const defaultRole = await this.targetDb.query('SELECT id FROM roles WHERE name = $1', ['customer']);
