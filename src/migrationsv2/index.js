@@ -778,6 +778,8 @@ class MigrationV2 {
             const urlKeyAttrId = await this.getAttributeId('url_key', 'catalog_product');
             const metaTitleAttrId = await this.getAttributeId('meta_title', 'catalog_product');
             const metaDescAttrId = await this.getAttributeId('meta_description', 'catalog_product');
+            const certNumberAttrId = await this.getAttributeId('certification_number', 'catalog_product');
+            const coinNumberAttrId = await this.getAttributeId('coin_number', 'catalog_product');
 
             // Query products for this specific category
             const productsQuery = `
@@ -794,6 +796,8 @@ class MigrationV2 {
                     cpe.updated_at,
                     cpevs_meta_title.value as meta_title,
                     cpevs_meta_desc.value as meta_description,
+                    cpet_cert.value as certification_number,
+                    cpet_coin.value as coin_number,
                     sold_dates.first_sale_date as sold_date,
                     sold_prices.last_sold_price as last_sold_price
                 FROM catalog_product_entity cpe
@@ -805,6 +809,8 @@ class MigrationV2 {
                 LEFT JOIN catalog_product_entity_varchar cpevu ON cpe.entity_id = cpevu.entity_id AND cpevu.attribute_id = ? AND cpevu.store_id = 0
                 LEFT JOIN catalog_product_entity_varchar cpevs_meta_title ON cpe.entity_id = cpevs_meta_title.entity_id AND cpevs_meta_title.attribute_id = ? AND cpevs_meta_title.store_id = 0
                 LEFT JOIN catalog_product_entity_varchar cpevs_meta_desc ON cpe.entity_id = cpevs_meta_desc.entity_id AND cpevs_meta_desc.attribute_id = ? AND cpevs_meta_desc.store_id = 0
+                LEFT JOIN catalog_product_entity_text cpet_cert ON cpe.entity_id = cpet_cert.entity_id AND cpet_cert.attribute_id = ? AND cpet_cert.store_id = 0
+                LEFT JOIN catalog_product_entity_text cpet_coin ON cpe.entity_id = cpet_coin.entity_id AND cpet_coin.attribute_id = ? AND cpet_coin.store_id = 0
                 INNER JOIN catalog_category_product ccp ON cpe.entity_id = ccp.product_id AND ccp.category_id = ?
                 LEFT JOIN (
                     SELECT
@@ -829,7 +835,7 @@ class MigrationV2 {
             `;
 
             const products = await this.sourceDb.query(productsQuery, [
-                nameAttrId, priceAttrId, descAttrId, shortDescAttrId, imageAttrId, urlKeyAttrId, metaTitleAttrId, metaDescAttrId, sourceCategoryId
+                nameAttrId, priceAttrId, descAttrId, shortDescAttrId, imageAttrId, urlKeyAttrId, metaTitleAttrId, metaDescAttrId, certNumberAttrId, coinNumberAttrId, sourceCategoryId
             ]);
 
             if (products.length === 0) {
@@ -871,19 +877,19 @@ class MigrationV2 {
                 product_identity: `${p.product_sku}-${p.entity_id}`,
                 product_sku: p.product_sku,
                 product_web_sku: p.product_sku,
-                cert_number: null, // Will be calculated separately if needed
+                cert_number: p.certification_number || null,
                 coin_video: null,
                 is_coin_video: false,
-                coin_number: null,
+                coin_number: p.coin_number || null,
                 coin_our_grade: null,
                 coin_grade_type: null,
-                coin_grade: null,
-                coin_grade_suffix: null,
-                coin_grade_prefix: null,
-                coin_grade_text: null,
-                year_text: null,
+                coin_grade_prefix: p.grade_prefix || null,  // MS, AU, etc.
+                coin_grade_suffix: p.grade_suffix || null,  // DCAM, CAM, RB, etc.  
+                coin_grade: p.grade_value ? parseFloat(p.grade_value) : null,  // 64.00, 70.00, etc.
+                coin_grade_text: p.grade_prefix ? (p.grade_value ? ' ' + p.grade_value : '') + (p.grade_suffix ? ' ' + p.grade_suffix : '') || null : null, // Full grade text
+                year_text: p.year || null,
                 coin_grade_prefix_type: null,
-                year_date: p.created_at,
+                year_date: new Date(p.year) || null,
                 is_second_hand: false,
                 is_consignment: false,
                 is_active: true,
