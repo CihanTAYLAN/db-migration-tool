@@ -145,83 +145,83 @@ program
             input: process.stdin,
             output: process.stdout
         });
-        const question = promisify(rl.question).bind(rl);
+        // const question = promisify(rl.question).bind(rl);
 
         try {
-            const answer = await question('Do you want to use the new v2 migration system? (y/n): ');
-            if (answer.toLowerCase() === 'y') {
-                const MigrationV2 = require('../migrationsv2');
-                const migrationInstance = new MigrationV2(
-                    process.env.SOURCE_DATABASE_URL,
-                    process.env.SOURCE_DB_TYPE,
-                    process.env.TARGET_DATABASE_URL,
-                    process.env.TARGET_DB_TYPE
-                );
-                await migrationInstance.run();
-            } else {
-                logger.info('Starting migration process with legacy system...');
+            // const answer = await question('Do you want to use the new v2 migration system? (y/n): ');
+            // if (answer.toLowerCase() === 'y') {
+            const MigrationV2 = require('../migrationsv2');
+            const migrationInstance = new MigrationV2(
+                process.env.SOURCE_DATABASE_URL,
+                process.env.SOURCE_DB_TYPE,
+                process.env.TARGET_DATABASE_URL,
+                process.env.TARGET_DB_TYPE
+            );
+            await migrationInstance.run();
+            // } else {
+            //     logger.info('Starting migration process with legacy system...');
 
-                const migrationDir = path.join(__dirname, '../migrations');
+            //     const migrationDir = path.join(__dirname, '../migrations');
 
-                if (!fs.existsSync(migrationDir)) {
-                    logger.error('Migration directory not found');
-                    return;
-                }
+            //     if (!fs.existsSync(migrationDir)) {
+            //         logger.error('Migration directory not found');
+            //         return;
+            //     }
 
-                // Define migration order for proper dependency handling
-                const migrationOrder = [
-                    'categories.js',
-                    'customers.js',
-                    'products.js',
-                    'product_categories.js',
-                    'product_images.js',
-                    'product_translations.js',
-                    'product_prices.js'
-                ];
+            //     // Define migration order for proper dependency handling
+            //     const migrationOrder = [
+            //         'categories.js',
+            //         'customers.js',
+            //         'products.js',
+            //         'product_categories.js',
+            //         'product_images.js',
+            //         'product_translations.js',
+            //         'product_prices.js'
+            //     ];
 
-                // Get all available migration files
-                const availableFiles = fs.readdirSync(migrationDir).filter(file =>
-                    file.endsWith('.js') && file !== 'template.js'
-                );
+            //     // Get all available migration files
+            //     const availableFiles = fs.readdirSync(migrationDir).filter(file =>
+            //         file.endsWith('.js') && file !== 'template.js'
+            //     );
 
-                // Filter and sort migrations according to defined order
-                const orderedMigrations = migrationOrder.filter(file => availableFiles.includes(file));
-                const unorderedMigrations = availableFiles.filter(file => !migrationOrder.includes(file));
+            //     // Filter and sort migrations according to defined order
+            //     const orderedMigrations = migrationOrder.filter(file => availableFiles.includes(file));
+            //     const unorderedMigrations = availableFiles.filter(file => !migrationOrder.includes(file));
 
-                // Combine ordered and unordered migrations
-                const allMigrations = [...orderedMigrations, ...unorderedMigrations];
+            //     // Combine ordered and unordered migrations
+            //     const allMigrations = [...orderedMigrations, ...unorderedMigrations];
 
-                logger.info(`Found ${allMigrations.length} migration files to run`);
+            //     logger.info(`Found ${allMigrations.length} migration files to run`);
 
-                for (const file of allMigrations) {
-                    const migrationPath = path.join(migrationDir, file);
-                    const migrationModule = require(migrationPath);
+            //     for (const file of allMigrations) {
+            //         const migrationPath = path.join(migrationDir, file);
+            //         const migrationModule = require(migrationPath);
 
-                    if (migrationModule && migrationModule.default) {
-                        const MigrationClass = migrationModule.default;
-                        const migrationInstance = new MigrationClass(
-                            process.env.SOURCE_DATABASE_URL,
-                            process.env.SOURCE_DB_TYPE,
-                            process.env.TARGET_DATABASE_URL,
-                            process.env.TARGET_DB_TYPE
-                        );
+            //         if (migrationModule && migrationModule.default) {
+            //             const MigrationClass = migrationModule.default;
+            //             const migrationInstance = new MigrationClass(
+            //                 process.env.SOURCE_DATABASE_URL,
+            //                 process.env.SOURCE_DB_TYPE,
+            //                 process.env.TARGET_DATABASE_URL,
+            //                 process.env.TARGET_DB_TYPE
+            //             );
 
-                        logger.info(`Running migration: ${file}`);
-                        try {
-                            await migrationInstance.run();
-                            logger.success(`${file} completed successfully`);
-                        } catch (error) {
-                            logger.error(`${file} failed`, { error: error.message });
-                            // Continue with next migration instead of stopping
-                            logger.warning('Continuing with next migration...');
-                        }
-                    } else {
-                        logger.warning(`Skipping ${file} - no default export found`);
-                    }
-                }
+            //             logger.info(`Running migration: ${file}`);
+            //             try {
+            //                 await migrationInstance.run();
+            //                 logger.success(`${file} completed successfully`);
+            //             } catch (error) {
+            //                 logger.error(`${file} failed`, { error: error.message });
+            //                 // Continue with next migration instead of stopping
+            //                 logger.warning('Continuing with next migration...');
+            //             }
+            //         } else {
+            //             logger.warning(`Skipping ${file} - no default export found`);
+            //         }
+            //     }
 
-                logger.success('All migrations completed');
-            }
+            //     logger.success('All migrations completed');
+            // }
         } finally {
             rl.close();
         }
