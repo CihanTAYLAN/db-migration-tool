@@ -28,6 +28,8 @@ class DbClient {
                 return rows;
             } else if (this.dbType === 'postgresql') {
                 const res = await this.client.query(sql, params);
+                // For backward compatibility, return rows directly, but add rowCount property
+                res.rows.rowCount = res.rowCount;
                 return res.rows;
             }
         } catch (error) {
