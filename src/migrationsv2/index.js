@@ -276,171 +276,7 @@ class MigrationV2 {
         }
 
         // Process products in this category (tree-based migration)
-        // await this.processCategoryProducts(category.entity_id, actualCategoryId, defaultLanguageId);
-    }
-
-    async migrateProducts() {
-        console.log('🚀 Starting products migration...');
-        logger.info('Starting products migration...');
-
-        // Get attribute IDs for EAV structure (catalog_product)
-        const nameAttrId = await this.getAttributeId('name', 'catalog_product');
-        const priceAttrId = await this.getAttributeId('price', 'catalog_product');
-        const descAttrId = await this.getAttributeId('description', 'catalog_product');
-        const shortDescAttrId = await this.getAttributeId('short_description', 'catalog_product');
-        const imageAttrId = await this.getAttributeId('image', 'catalog_product');
-        const urlKeyAttrId = await this.getAttributeId('url_key', 'catalog_product');
-
-        logger.info(`Attribute IDs loaded: name=${nameAttrId}, price=${priceAttrId}, desc=${descAttrId}, short_desc=${shortDescAttrId}, image=${imageAttrId}, url_key=${urlKeyAttrId}`);
-
-        console.log('🔍 Executing products query...');
-
-        // Query products with categories, sold_date, sold_price
-        const productsQuery = `
-            SELECT
-                cpe.entity_id,
-                cpe.sku as product_sku,
-                cpev.value as name,
-                cped.value as price,
-                cpevd.value as description,
-                cpevs.value as short_description,
-                cpevi.value as image,
-                cpevu.value as url_key,
-                cpe.created_at,
-                cpe.updated_at,
-                GROUP_CONCAT(DISTINCT ccp.category_id) as category_ids,
-                sold_dates.first_sale_date as sold_date,
-                sold_prices.last_sold_price as last_sold_price
-            FROM catalog_product_entity cpe
-            LEFT JOIN catalog_product_entity_varchar cpev ON cpe.entity_id = cpev.entity_id AND cpev.attribute_id = ? AND cpev.store_id = 0
-            LEFT JOIN catalog_product_entity_decimal cped ON cpe.entity_id = cped.entity_id AND cped.attribute_id = ? AND cped.store_id = 0
-            LEFT JOIN catalog_product_entity_text cpevd ON cpe.entity_id = cpevd.entity_id AND cpevd.attribute_id = ? AND cpevd.store_id = 0
-            LEFT JOIN catalog_product_entity_varchar cpevs ON cpe.entity_id = cpevs.entity_id AND cpevs.attribute_id = ? AND cpevs.store_id = 0
-            LEFT JOIN catalog_product_entity_varchar cpevi ON cpe.entity_id = cpevi.entity_id AND cpevi.attribute_id = ? AND cpevi.store_id = 0
-            LEFT JOIN catalog_product_entity_varchar cpevu ON cpe.entity_id = cpevu.entity_id AND cpevu.attribute_id = ? AND cpevu.store_id = 0
-            LEFT JOIN catalog_category_product ccp ON cpe.entity_id = ccp.product_id
-            LEFT JOIN (
-                SELECT
-                    soi.product_id,
-                    MIN(so.created_at) as first_sale_date
-                FROM sales_order_item soi
-                JOIN sales_order so ON soi.order_id = so.entity_id
-                WHERE so.status IN ('complete', 'a_complete')
-                GROUP BY soi.product_id
-            ) sold_dates ON cpe.entity_id = sold_dates.product_id
-            LEFT JOIN (
-                SELECT
-                    soi.product_id,
-                    MAX(soi.price) as last_sold_price
-                FROM sales_order_item soi
-                JOIN sales_order so ON soi.order_id = so.entity_id
-                WHERE so.status IN ('complete', 'a_complete')
-                GROUP BY soi.product_id
-            ) sold_prices ON cpe.entity_id = sold_prices.product_id
-            WHERE cpe.type_id = 'simple'
-            GROUP BY cpe.entity_id, cpe.sku, cpev.value, cped.value, cpevd.value, cpevs.value, cpevi.value, cpevu.value, cpe.created_at, cpe.updated_at, sold_dates.first_sale_date, sold_prices.last_sold_price
-            ORDER BY cpe.entity_id
-        `;
-
-        const products = await this.sourceDb.query(productsQuery, [
-            nameAttrId, priceAttrId, descAttrId, shortDescAttrId, imageAttrId, urlKeyAttrId
-        ]);
-
-        logger.info(`${products.length} products found`);
-
-        if (products.length === 0) {
-            logger.warning('No products found in source database');
-            return;
-        }
-
-        // Get default language ID
-        const defaultLanguageId = await this.ensureDefaultLanguage();
-
-        // Batch insert products
-        const BATCH_SIZE = 1000;
-        let insertedCount = 0;
-
-        for (let i = 0; i < products.length; i += BATCH_SIZE) {
-            const batch = products.slice(i, i + BATCH_SIZE);
-            const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
-
-            console.log(`🔄 Processing batch ${batchIndex}/${Math.ceil(products.length / BATCH_SIZE)} (${batch.length} products)`);
-            logger.info(`Processing batch ${batchIndex}/${Math.ceil(products.length / BATCH_SIZE)} (${batch.length} products)`);
-
-            const pgProducts = batch.map(p => ({
-                id: uuidv4(),
-                product_identity: `${p.product_sku}-${p.entity_id}`,
-                product_sku: p.product_sku,
-                product_web_sku: p.product_sku,
-                cert_number: p.grade_value ? Math.round(parseFloat(p.grade_value)).toString() : null,
-                coin_video: null,
-                is_coin_video: false,
-                coin_number: null,
-                coin_our_grade: null,
-                coin_grade_type: null,
-                coin_grade: null,
-                coin_grade_suffix: null,
-                coin_grade_prefix: null,
-                coin_grade_text: null,
-                year_text: null,
-                coin_grade_prefix_type: null,
-                year_date: p.created_at,
-                is_second_hand: false,
-                is_consignment: false,
-                is_active: true,
-                is_on_hold: false,
-                status: 'pending',
-                quantity: 1,
-                price: parseFloat(p.price) || 0,
-                sold_date: p.sold_date || null,
-                archived_at: null,
-                sold_price: p.last_sold_price || null,
-                discount_price: null,
-                ebay_offer_code: null,
-                stars: 0,
-                created_at: p.created_at,
-                updated_at: p.updated_at,
-                deleted_at: null,
-                product_master_image_id: null,
-                certificate_provider_id: null,
-                xero_tenant_id: null,
-                country_id: null
-            }));
-
-            // Insert into products
-            const fieldCount = Object.keys(pgProducts[0]).length;
-            const placeholders = pgProducts.map((_, index) => {
-                const start = index * fieldCount + 1;
-                const params = Array.from({ length: fieldCount }, (_, i) => `$${start + i}`);
-                return `(${params.join(', ')})`;
-            }).join(', ');
-
-            const values = pgProducts.flatMap(p => Object.values(p));
-            const fields = Object.keys(pgProducts[0]).join(', ');
-            const insertQuery = `
-                INSERT INTO products (${fields})
-                VALUES ${placeholders}
-                ON CONFLICT (product_web_sku) DO UPDATE SET
-                    product_sku = EXCLUDED.product_sku,
-                    price = EXCLUDED.price,
-                    cert_number = EXCLUDED.cert_number,
-                    sold_date = EXCLUDED.sold_date,
-                    sold_price = EXCLUDED.sold_price,
-                    updated_at = EXCLUDED.updated_at
-            `;
-
-            await this.targetDb.query(insertQuery, values);
-
-            insertedCount += batch.length;
-            logger.info(`Batch ${batchIndex}/${Math.ceil(products.length / BATCH_SIZE)} completed (${insertedCount}/${products.length} products)`);
-        }
-
-        // Migrate related data
-        await this.migrateProductTranslations(products, defaultLanguageId);
-        await this.migrateProductCategories(products);
-        await this.migrateProductPrices(products);
-
-        logger.success(`Products migration completed: ${insertedCount} products inserted/updated`);
+        await this.processCategoryProducts(category.entity_id, actualCategoryId, defaultLanguageId);
     }
 
     async migrateProductTranslations(products, languageId) {
@@ -876,7 +712,7 @@ class MigrationV2 {
                 id: uuidv4(),
                 product_identity: `${p.product_sku}-${p.entity_id}`,
                 product_sku: p.product_sku,
-                product_web_sku: p.product_sku,
+                product_web_sku: p.product_sku + '-' + (() => { const now = Math.floor(new Date(p.created_at) / 1000); return now.toString(36); })(),
                 cert_number: p.certification_number || null,
                 coin_video: null,
                 is_coin_video: false,
@@ -894,7 +730,10 @@ class MigrationV2 {
                 is_consignment: false,
                 is_active: true,
                 is_on_hold: false,
-                status: 'pending',
+                // bütün ürünler pending tir.
+                // ürün satıldığında yani bir sold date geldiğinde status sold olacaktır.
+                // fakat ürün satıldıktan sonra 14 gün geçmiş ise, status archived olacaktır.
+                status: p.sold_date ? (new Date() - new Date(p.sold_date) > 14 * 24 * 60 * 60 * 1000 ? 'archived' : 'sold') : 'pending',
                 quantity: 1,
                 price: parseFloat(p.price) || 0,
                 sold_date: p.sold_date || null,
