@@ -205,6 +205,22 @@ class ProductsStep {
     async fetchSourceProducts() {
         logger.info('Fetching source products...');
 
+        // Build WHERE conditions dynamically based on config
+        let whereConditions = ['cpe.type_id = ?'];
+        let queryParams = [this.config.filters.productTypes[0]]; // 'simple'
+
+        // Add excluded product SKUs filter if configured
+        if (this.config.filters.excludedProductSkus && this.config.filters.excludedProductSkus.length > 0) {
+            const excludedSkus = this.config.filters.excludedProductSkus;
+            const placeholders = excludedSkus.map(() => '?').join(', ');
+            whereConditions.push(`cpe.sku NOT IN (${placeholders})`);
+            queryParams.push(...excludedSkus);
+
+            logger.info(`Excluding ${excludedSkus.length} products from migration: ${excludedSkus.join(', ')}`);
+        }
+
+        const whereClause = whereConditions.join(' AND ');
+
         const query = `
             SELECT
                 cpe.entity_id,
@@ -266,7 +282,7 @@ class ProductsStep {
                 WHERE so.status IN (${this.config.filters.orderStatuses.map(s => `'${s}'`).join(',')})
                 GROUP BY soi.product_id
             ) sold_prices ON cpe.entity_id = sold_prices.product_id
-            WHERE cpe.type_id = ?
+            WHERE ${whereClause}
             GROUP BY cpe.entity_id, cpe.sku, cpevs_name.value, cped.value, cpf.name, cpf.price, cpf.description, cpf.short_description,
                      cpf.image, cpf.url_key, cpe.created_at, cpe.updated_at, cpevs_meta_title.value,
                      cpevs_meta_desc.value, cpet_cert.value, cpet_coin.value, cpevs_grade_prefix.value,
@@ -274,9 +290,7 @@ class ProductsStep {
             ORDER BY cpe.entity_id
         `;
 
-        const products = await this.sourceDb.query(query, [
-            this.config.filters.productTypes[0] // 'simple'
-        ]);
+        const products = await this.sourceDb.query(query, queryParams);
 
         // Fetch URL keys separately and add to products (workaround for GROUP BY issue)
         if (products.length > 0) {

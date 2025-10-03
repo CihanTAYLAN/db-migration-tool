@@ -102,6 +102,7 @@ const config = {
     // Data filters
     filters: {
         excludedCategoryIds: [1, 2, 3, 5, 6, 151], // Root, Default, Coins for sale, Members only, etc.
+        excludedProductSkus: ['1956SET-4', '1962SET', '1966SET-2', '1963SET', '1974SET', '1958SET', 'PCGSbox'], // Set products and accessories to exclude
         productTypes: ['simple'],
         orderStatuses: ['complete', 'a_complete']
     },
