@@ -179,7 +179,10 @@ class ProductsStep {
             // 7. Update master category IDs for all products
             await this.updateMasterCategoryIds(products);
 
-            // 8. Ensure Xero tenants exist
+            // 8. Update master image IDs for all products
+            await this.updateMasterImageIds(products);
+
+            // 9. Ensure Xero tenants exist
             await this.ensureXeroTenants();
 
             // 9. Set Xero tenant IDs for products (based on categories or default)
@@ -1054,6 +1057,95 @@ class ProductsStep {
             logger.success(`Updated master category IDs for ${updatedCount} products`);
         } catch (error) {
             logger.error('Failed to update master category IDs', { error: error.message });
+        }
+    }
+
+    async updateMasterImageIds(products) {
+        logger.info('Updating master image IDs for products...');
+
+        try {
+            // Get product mappings
+            const productWebSkus = products.map(p => {
+                const timestamp = Math.floor(new Date(p.created_at) / 1000);
+                return p.product_sku + '-' + timestamp.toString(36);
+            });
+
+            const targetProducts = await this.targetDb.query(
+                'SELECT id, product_web_sku FROM products WHERE product_web_sku = ANY($1)',
+                [productWebSkus]
+            );
+
+            const productMap = new Map(targetProducts.map(p => [p.product_web_sku, p.id]));
+            logger.info(`Found ${productMap.size} products in target database for master image ID update`);
+
+            // Get all product image relations (only master images is_master = true)
+            const productIds = Array.from(productMap.values());
+            const masterImages = await this.targetDb.query(
+                'SELECT pi.id, pi.product_id FROM product_images pi WHERE pi.product_id = ANY($1) AND pi.is_master = true',
+                [productIds]
+            );
+
+            logger.info(`Found ${masterImages.length} master images in target database`);
+
+            // Create product_id to master_image_id mapping
+            const masterImageMap = new Map();
+            masterImages.forEach(img => masterImageMap.set(img.product_id, img.id));
+
+            // Update products with master image IDs
+            let updatedCount = 0;
+            let processedCount = 0;
+            let productsWithoutImages = 0;
+            let productsNotFound = 0;
+
+            logger.info(`Processing ${products.length} products for master image ID updates...`);
+
+            for (const product of products) {
+                processedCount++;
+                const productWebSku = product.product_sku + '-' + Math.floor(new Date(product.created_at) / 1000).toString(36);
+                const productId = productMap.get(productWebSku);
+
+                if (!productId) {
+                    productsNotFound++;
+                    if (productsNotFound <= 5) { // Log first 5 missing products
+                        logger.debug(`Product not found in target: ${productWebSku}`);
+                    }
+                    continue;
+                }
+
+                const masterImageId = masterImageMap.get(productId);
+                if (!masterImageId) {
+                    productsWithoutImages++;
+
+                    // Get source entity_id for context
+                    const sourceEntityId = product.entity_id;
+                    logger.debug(`No master image found for product ${productWebSku} (source entity_id: ${sourceEntityId})`);
+
+                    continue;
+                }
+
+                await this.targetDb.query(
+                    'UPDATE products SET product_master_image_id = $1, updated_at = NOW() WHERE id = $2',
+                    [masterImageId, productId]
+                );
+                updatedCount++;
+
+                if (updatedCount <= 5) { // Log first 5 successful updates
+                    logger.debug(`Set master_image_id to ${masterImageId} for product ${productWebSku}`);
+                }
+            }
+
+            // Summary log with actions if there are missing images
+            if (productsWithoutImages > 0) {
+                logger.warn(`Found ${productsWithoutImages} products without master images:`);
+                logger.warn(`- These products have no images in the source database`);
+                logger.warn(`- Product_master_image_id field will remain NULL for these products`);
+                logger.warn(`- This is normal for some products and doesn't affect system functionality`);
+            }
+
+            logger.info(`Processed ${processedCount} products, updated ${updatedCount} master image IDs, ${productsWithoutImages} products without images`);
+            logger.success(`Updated master image IDs for ${updatedCount} products`);
+        } catch (error) {
+            logger.error('Failed to update master image IDs', { error: error.message });
         }
     }
 

@@ -101,7 +101,7 @@ const config = {
 
     // Data filters
     filters: {
-        excludedCategoryIds: [1, 2, 3, 5, 6], // Root, Default, Coins for sale, etc.
+        excludedCategoryIds: [1, 2, 3, 5, 6, 151], // Root, Default, Coins for sale, Members only, etc.
         productTypes: ['simple'],
         orderStatuses: ['complete', 'a_complete']
     },
