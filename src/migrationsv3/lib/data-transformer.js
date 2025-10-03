@@ -127,6 +127,22 @@ class DataTransformer {
             }
         }
 
+        // Parse grade from meta_title if EAV fields are empty
+        let gradePrefix = sourceProduct.grade_prefix || null;
+        let gradeSuffix = sourceProduct.grade_suffix || null;
+
+        if ((!gradePrefix || gradePrefix.trim() === '') && sourceProduct.meta_title) {
+            const parsedGrade = this.parseGradeFromMetaTitle(sourceProduct.meta_title);
+            if (parsedGrade) {
+                gradePrefix = parsedGrade.prefix || gradePrefix;
+                gradeSuffix = parsedGrade.suffix || gradeSuffix;
+                // Update grade_value if also empty and parsed
+                if (!sourceProduct.grade_value && parsedGrade.value) {
+                    sourceProduct.grade_value = parsedGrade.value;
+                }
+            }
+        }
+
         return {
             id: productId,
             product_identity: `${sourceProduct.product_sku}-${sourceProduct.entity_id}`,
@@ -138,12 +154,12 @@ class DataTransformer {
             coin_number: sourceProduct.coin_number || null,
             coin_our_grade: this.convertTo10PointScale(sourceProduct.grade_value),
             coin_grade_type: sourceProduct.grade_value ? parseInt(sourceProduct.grade_value).toString() : null,
-            coin_grade_prefix: sourceProduct.grade_prefix || null,
-            coin_grade_suffix: sourceProduct.grade_suffix || null,
+            coin_grade_prefix: gradePrefix,
+            coin_grade_suffix: gradeSuffix,
             coin_grade: sourceProduct.grade_value || null,
-            coin_grade_text: this.buildGradeText(sourceProduct),
+            coin_grade_text: this.buildGradeText({ grade_prefix: gradePrefix, grade_value: sourceProduct.grade_value, grade_suffix: gradeSuffix }),
             year_text: this.parseValidYear(sourceProduct.year, sourceProduct.sort_string, sourceProduct.name),
-            coin_grade_prefix_type: sourceProduct.grade_prefix || null,
+            coin_grade_prefix_type: gradePrefix,
             year_date: sourceProduct.year && !isNaN(parseInt(sourceProduct.year))
                 ? new Date(parseInt(sourceProduct.year), 0, 1)
                 : null,
@@ -213,6 +229,41 @@ class DataTransformer {
         );
 
         return this.ngcScaleMapping[closestGrade];
+    }
+
+    parseGradeFromMetaTitle(metaTitle) {
+        if (!metaTitle || typeof metaTitle !== 'string') return null;
+
+        // Match PCGS/NGC/AU... grading service patterns: Service PrefixValueSuffix
+        // Example: "PCGS XF45BN" → prefix: 'XF', value: 45, suffix: 'BN'
+        const pcgsMatch = metaTitle.match(/PCGS\s+([A-Z]+)(\d+)([A-Z]+)?/);
+        if (pcgsMatch) {
+            return {
+                prefix: pcgsMatch[1] || null,
+                value: pcgsMatch[2] ? parseInt(pcgsMatch[2]) : null,
+                suffix: pcgsMatch[3] || null
+            };
+        }
+
+        const ngcMatch = metaTitle.match(/NGC\s+([A-Z]+)(\d+)([A-Z]+)?/);
+        if (ngcMatch) {
+            return {
+                prefix: ngcMatch[1] || null,
+                value: ngcMatch[2] ? parseInt(ngcMatch[2]) : null,
+                suffix: ngcMatch[3] || null
+            };
+        }
+
+        const anacsMatch = metaTitle.match(/ANACS\s+([A-Z]+)(\d+)([A-Z]+)?/);
+        if (anacsMatch) {
+            return {
+                prefix: anacsMatch[1] || null,
+                value: anacsMatch[2] ? parseInt(anacsMatch[2]) : null,
+                suffix: anacsMatch[3] || null
+            };
+        }
+
+        return null;
     }
 
     buildGradeText(product) {

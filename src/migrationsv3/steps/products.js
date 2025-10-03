@@ -221,9 +221,9 @@ class ProductsStep {
                 cpevs_meta_desc.value as meta_description,
                 cpet_cert.value as certification_number,
                 cpet_coin.value as coin_number,
-                COALESCE(cpevs_grade_prefix.value, cpf.grade_prefix) as grade_prefix,
-                COALESCE(cped_grade_value.value, cpf.grade_value) as grade_value,
-                COALESCE(cpevs_grade_suffix.value, cpf.grade_suffix) as grade_suffix,
+                cpevs_grade_prefix.value as grade_prefix,
+                cped_grade_value.value as grade_value,
+                cpevs_grade_suffix.value as grade_suffix,
                 cpf.year,
                 cpf.country,
                 cpf.country_value,
@@ -270,7 +270,7 @@ class ProductsStep {
             GROUP BY cpe.entity_id, cpe.sku, cpevs_name.value, cped.value, cpf.name, cpf.price, cpf.description, cpf.short_description,
                      cpf.image, cpf.url_key, cpe.created_at, cpe.updated_at, cpevs_meta_title.value,
                      cpevs_meta_desc.value, cpet_cert.value, cpet_coin.value, cpevs_grade_prefix.value,
-                     cped_grade_value.value, cpevs_grade_suffix.value, cpf.year, cpf.country, cpf.country_value, cpei_cert_type.value, sold_dates.first_sale_date, sold_prices.last_sold_price
+                     cped_grade_value.value, cpevs_grade_suffix.value, cpf.year, cpf.country, cpf.country_value, cpei_cert_type.value, sold_dates.first_sale_date, sold_prices.last_sold_price, cpev_sort.value
             ORDER BY cpe.entity_id
         `;
 
