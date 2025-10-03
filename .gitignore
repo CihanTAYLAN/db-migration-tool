@@ -172,3 +172,4 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 sql-ddl-informations
+customer_emails_for_password_reset.csv

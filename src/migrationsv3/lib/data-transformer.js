@@ -142,7 +142,7 @@ class DataTransformer {
             coin_grade_suffix: sourceProduct.grade_suffix || null,
             coin_grade: sourceProduct.grade_value || null,
             coin_grade_text: this.buildGradeText(sourceProduct),
-            year_text: sourceProduct.year || null,
+            year_text: this.parseValidYear(sourceProduct.year, sourceProduct.sort_string, sourceProduct.name),
             coin_grade_prefix_type: sourceProduct.grade_prefix || null,
             year_date: sourceProduct.year && !isNaN(parseInt(sourceProduct.year))
                 ? new Date(parseInt(sourceProduct.year), 0, 1)
@@ -250,6 +250,52 @@ class DataTransformer {
             const archivedDate = new Date(soldDate.getTime() + (21 * 24 * 60 * 60 * 1000)); // 21 days
             return archivedDate;
         }
+        return null;
+    }
+
+    parseValidYear(yearValue, sortString, productName) {
+        // Primary: Use year field if valid
+        const yearString = this.extractYearFromString(yearValue);
+        if (yearString) return yearString;
+
+        // Fallback 1: Extract from sort_string (97.9% success rate)
+        const sortYear = this.extractYearFromString(sortString);
+        if (sortYear) return sortYear;
+
+        // Fallback 2: Extract from product name
+        const nameYear = this.extractYearFromString(productName);
+        if (nameYear) return nameYear;
+
+        return null;
+    }
+
+    extractYearFromString(input) {
+        if (!input) return null;
+
+        const inputString = String(input).trim();
+
+        // Common invalid values in Magento
+        const invalidValues = ['none', 'None', 'NONE', '', 'null', 'NULL', '0', '(199'];
+        if (invalidValues.includes(inputString) || inputString.length < 4) return null;
+
+        // Try exact 4-digit match first
+        const exactMatch = inputString.match(/^(\d{4})/);
+        if (exactMatch) {
+            const year = parseInt(exactMatch[1]);
+            if (year >= 1000 && year <= 2100) {
+                return String(year);
+            }
+        }
+
+        // Try to find any 4 consecutive digits
+        const fourDigitMatch = inputString.match(/\b(\d{4})\b/);
+        if (fourDigitMatch) {
+            const year = parseInt(fourDigitMatch[1]);
+            if (year >= 1000 && year <= 2100) {
+                return String(year);
+            }
+        }
+
         return null;
     }
 

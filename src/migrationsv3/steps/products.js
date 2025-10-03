@@ -231,6 +231,7 @@ class ProductsStep {
                 cpei_archived.value as archived_status,
                 sold_dates.first_sale_date as sold_date,
                 sold_prices.last_sold_price as last_sold_price,
+                cpev_sort.value as sort_string,
                 GROUP_CONCAT(DISTINCT ccp.category_id) as category_ids
             FROM catalog_product_entity cpe
             LEFT JOIN catalog_product_flat_1 cpf ON cpe.entity_id = cpf.entity_id
@@ -245,6 +246,7 @@ class ProductsStep {
             LEFT JOIN catalog_product_entity_varchar cpevs_grade_suffix ON cpe.entity_id = cpevs_grade_suffix.entity_id AND cpevs_grade_suffix.attribute_id = 153 AND cpevs_grade_suffix.store_id = 0
             LEFT JOIN catalog_product_entity_int cpei_cert_type ON cpe.entity_id = cpei_cert_type.entity_id AND cpei_cert_type.attribute_id = 147 AND cpei_cert_type.store_id = 0
             LEFT JOIN catalog_product_entity_int cpei_archived ON cpe.entity_id = cpei_archived.entity_id AND cpei_archived.attribute_id = 144 AND cpei_archived.store_id = 0
+            LEFT JOIN catalog_product_entity_varchar cpev_sort ON cpe.entity_id = cpev_sort.entity_id AND cpev_sort.attribute_id = 141 AND cpev_sort.store_id = 0
             INNER JOIN catalog_category_product ccp ON cpe.entity_id = ccp.product_id
             LEFT JOIN (
                 SELECT
