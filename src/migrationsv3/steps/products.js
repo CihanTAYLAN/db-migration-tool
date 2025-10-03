@@ -859,30 +859,38 @@ class ProductsStep {
         logger.info('Starting product certificate provider badges migration...');
 
         try {
-            // Get product mappings
+            // Get product mappings with certificate_provider_id
             const productWebSkus = products.map(p => {
                 const timestamp = Math.floor(new Date(p.created_at) / 1000);
                 return p.product_sku + '-' + timestamp.toString(36);
             });
 
             const targetProducts = await this.targetDb.query(
-                'SELECT id, product_web_sku FROM products WHERE product_web_sku = ANY($1)',
+                'SELECT id, product_web_sku, certificate_provider_id FROM products WHERE product_web_sku = ANY($1)',
                 [productWebSkus]
             );
 
-            const productMap = new Map(targetProducts.map(p => [p.product_web_sku, p.id]));
+            const productMap = new Map(targetProducts.map(p => [p.product_web_sku, { id: p.id, certificate_provider_id: p.certificate_provider_id }]));
             logger.info(`Found ${productMap.size} products in target database for badge migration`);
 
-            // Get valid target product IDs (avoid null values)
-            const validProductIds = Array.from(productMap.values()).filter(id => id);
+            // Filter products that have certificate_provider_id
+            const productsWithCertificateProviders = Array.from(productMap.entries())
+                .filter(([_, productData]) => productData.certificate_provider_id)
+                .map(([webSku, productData]) => ({ webSku, id: productData.id, certificate_provider_id: productData.certificate_provider_id }));
 
-            if (validProductIds.length === 0) {
-                logger.info('No valid products found for badge migration');
+            if (productsWithCertificateProviders.length === 0) {
+                logger.info('No products with certificate providers found for badge migration');
                 return;
             }
 
-            // Get all certificate provider badges from target
-            const targetBadges = await this.targetDb.query('SELECT id FROM certificate_provider_badges');
+            logger.info(`Found ${productsWithCertificateProviders.length} products with certificate providers out of ${productMap.size} total products`);
+
+            // Get certificate provider to badges mapping
+            const targetBadges = await this.targetDb.query(`
+                SELECT cpb.id, cpb.certificate_provider_id, cp.name as provider_name
+                FROM certificate_provider_badges cpb
+                LEFT JOIN certificate_providers cp ON cpb.certificate_provider_id = cp.id
+            `);
             logger.info(`Found ${targetBadges.length} certificate provider badges in target database`);
 
             if (targetBadges.length === 0) {
@@ -890,7 +898,22 @@ class ProductsStep {
                 return;
             }
 
+            // Create provider_id to badges mapping
+            const providerBadgeMap = new Map();
+            targetBadges.forEach(badge => {
+                if (!providerBadgeMap.has(badge.certificate_provider_id)) {
+                    providerBadgeMap.set(badge.certificate_provider_id, []);
+                }
+                providerBadgeMap.get(badge.certificate_provider_id).push({
+                    id: badge.id,
+                    provider_name: badge.provider_name
+                });
+            });
+
+            logger.info(`Created badge mappings for ${providerBadgeMap.size} different providers`);
+
             // Check existing product-badge relations to avoid duplicates
+            const validProductIds = productsWithCertificateProviders.map(p => p.id);
             logger.info('Checking existing product-badge relations to prevent duplicates...');
             const existingRelations = await this.targetDb.query(`
                 SELECT product_id, certificate_provider_badge_id
@@ -907,14 +930,24 @@ class ProductsStep {
 
             logger.info(`Found ${existingRelations.length} existing product-badge relations`);
 
-            // Create many-to-many relations: every product with every badge (only missing ones)
+            // Create relations: each product with only its certificate provider's badges
             const badgeRelations = [];
+            let totalRelationsConsidered = 0;
             let skippedExisting = 0;
 
-            for (const [productWebSku, productId] of productMap.entries()) {
-                if (!productId) continue;
+            for (const productData of productsWithCertificateProviders) {
+                const { id: productId, certificate_provider_id, webSku } = productData;
 
-                for (const badge of targetBadges) {
+                // Get badges for this product's certificate provider
+                const providerBadges = providerBadgeMap.get(certificate_provider_id);
+                if (!providerBadges || providerBadges.length === 0) {
+                    logger.debug(`No badges found for provider ${certificate_provider_id} of product ${webSku}`);
+                    continue;
+                }
+
+                totalRelationsConsidered += providerBadges.length;
+
+                for (const badge of providerBadges) {
                     const relationKey = `${productId}-${badge.id}`;
 
                     // Skip if relation already exists
@@ -926,7 +959,7 @@ class ProductsStep {
                     // Find the original product for created_at timestamp
                     const originalProduct = products.find(p => {
                         const timestamp = Math.floor(new Date(p.created_at) / 1000);
-                        return p.product_sku + '-' + timestamp.toString(36) === productWebSku;
+                        return p.product_sku + '-' + timestamp.toString(36) === webSku;
                     });
 
                     badgeRelations.push({
@@ -941,7 +974,7 @@ class ProductsStep {
 
             logger.info(`Prepared ${badgeRelations.length} new product-badge relations for migration`);
             logger.info(`Skipped ${skippedExisting} existing relations to prevent duplicates`);
-            logger.info(`Total relations considered: ${validProductIds.length * targetBadges.length} (${validProductIds.length} products × ${targetBadges.length} badges)`);
+            logger.info(`Total relations considered: ${totalRelationsConsidered} (${productsWithCertificateProviders.length} products × average badges per provider)`);
 
             if (badgeRelations.length === 0) {
                 logger.info('No new badge relations to migrate');
