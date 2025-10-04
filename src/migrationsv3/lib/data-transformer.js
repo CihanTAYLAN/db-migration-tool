@@ -145,14 +145,27 @@ class DataTransformer {
         const timestamp = Math.floor(new Date(sourceProduct.created_at) / 1000);
         const productWebSku = sourceProduct.product_sku + '-' + timestamp.toString(36);
 
-        // Map country to country_id
+        // Map country to country_id - try multiple country fields
         let countryId = null;
-        if (sourceProduct.country_value) {
-            const isoCode = this.countryMapping[sourceProduct.country_value];
-            if (isoCode) {
-                // This will be resolved later in the migration step
-                countryId = isoCode; // Store ISO code temporarily, will be replaced with actual ID
+
+        // Priority: country_of_manufacture > country_value > country
+        const countrySource = sourceProduct.country_of_manufacture ||
+            sourceProduct.country_value ||
+            sourceProduct.country;
+
+        if (countrySource) {
+            // If it's already an ISO code (AU, US, etc.), use it directly
+            if (typeof countrySource === 'string' && countrySource.length === 2) {
+                countryId = countrySource.toUpperCase();
+            } else {
+                // Try to map from country name
+                const isoCode = this.countryMapping[countrySource];
+                if (isoCode) {
+                    countryId = isoCode;
+                }
             }
+
+            logger.debug(`Mapped country for product ${sourceProduct.product_sku}: ${countrySource} -> ${countryId}`);
         }
 
         // Map certification_type to certificate_provider_id with caching
@@ -212,9 +225,7 @@ class DataTransformer {
             coin_grade_text: this.buildGradeText({ grade_prefix: gradePrefix, grade_value: sourceProduct.grade_value, grade_suffix: gradeSuffix }),
             year_text: this.parseValidYear(sourceProduct.year, sourceProduct.sort_string, sourceProduct.name),
             coin_grade_prefix_type: gradePrefix,
-            year_date: sourceProduct.year && !isNaN(parseInt(sourceProduct.year))
-                ? new Date(parseInt(sourceProduct.year), 0, 1)
-                : null,
+            year_date: this.parseValidYearDate(sourceProduct.year, sourceProduct.sort_string, sourceProduct.name),
             is_second_hand: false,
             is_consignment: false,
             is_active: true,
@@ -369,6 +380,18 @@ class DataTransformer {
         const nameYear = this.extractYearFromString(productName);
         if (nameYear) return nameYear;
 
+        return null;
+    }
+
+    parseValidYearDate(yearValue, sortString, productName) {
+        // Use same fallback logic as parseValidYear, but return Date object
+        const yearString = this.parseValidYear(yearValue, sortString, productName);
+        if (yearString && !isNaN(parseInt(yearString))) {
+            const year = parseInt(yearString);
+            if (year >= 1000 && year <= 2100) {
+                return new Date(year, 0, 1); // January 1st of the year
+            }
+        }
         return null;
     }
 
