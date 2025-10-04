@@ -261,8 +261,8 @@ class ProductsStep {
             LEFT JOIN catalog_product_entity_decimal cped ON cpe.entity_id = cped.entity_id AND cped.attribute_id = 77 AND cped.store_id = 0
             LEFT JOIN catalog_product_entity_varchar cpevs_meta_title ON cpe.entity_id = cpevs_meta_title.entity_id AND cpevs_meta_title.attribute_id = 84 AND cpevs_meta_title.store_id = 0
             LEFT JOIN catalog_product_entity_varchar cpevs_meta_desc ON cpe.entity_id = cpevs_meta_desc.entity_id AND cpevs_meta_desc.attribute_id = 86 AND cpevs_meta_desc.store_id = 0
-            LEFT JOIN catalog_product_entity_text cpet_cert ON cpe.entity_id = cpet_cert.entity_id AND cpet_cert.attribute_id = 165 AND cpet_cert.store_id = 0
-            LEFT JOIN catalog_product_entity_text cpet_coin ON cpe.entity_id = cpet_coin.entity_id AND cpet_coin.attribute_id = 166 AND cpet_coin.store_id = 0
+            LEFT JOIN catalog_product_entity_text cpet_cert ON cpe.entity_id = cpet_cert.entity_id AND cpet_cert.attribute_id = 138 AND cpet_cert.store_id = 0
+            LEFT JOIN catalog_product_entity_text cpet_coin ON cpe.entity_id = cpet_coin.entity_id AND cpet_coin.attribute_id = 142 AND cpet_coin.store_id = 0
             LEFT JOIN catalog_product_entity_varchar cpevs_grade_prefix ON cpe.entity_id = cpevs_grade_prefix.entity_id AND cpevs_grade_prefix.attribute_id = 135 AND cpevs_grade_prefix.store_id = 0
             LEFT JOIN catalog_product_entity_decimal cped_grade_value ON cpe.entity_id = cped_grade_value.entity_id AND cped_grade_value.attribute_id = 148 AND cped_grade_value.store_id = 0
             LEFT JOIN catalog_product_entity_varchar cpevs_grade_suffix ON cpe.entity_id = cpevs_grade_suffix.entity_id AND cpevs_grade_suffix.attribute_id = 153 AND cpevs_grade_suffix.store_id = 0
