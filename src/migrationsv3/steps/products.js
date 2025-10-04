@@ -16,6 +16,12 @@ class ProductsStep {
         this.config = config;
         this.eavMapper = eavMapper;
         this.defaultLanguageId = defaultLanguageId;
+
+        // Cache for repeated lookups (performance optimization)
+        this.countryCache = new Map(); // isoCode -> countryId
+        this.categoryCache = new Map(); // sourceEntityId -> targetCategoryId
+        this.xeroTenantCache = new Map(); // accountCode -> tenantId
+
         this.batchProcessor = new BatchProcessor({
             batchSize: config.steps.products.batchSize,
             parallelLimit: 1, // Sequential processing to avoid transaction conflicts
@@ -372,28 +378,26 @@ class ProductsStep {
     }
 
     async resolveCountryIds(products) {
-        // Get unique ISO codes from products
-        const isoCodes = [...new Set(products.map(p => p.country_id).filter(code => code))];
+        // Get unique ISO codes from products that aren't already cached
+        const isoCodes = [...new Set(products.map(p => p.country_id).filter(code => code && !this.countryCache.has(code)))];
 
-        if (isoCodes.length === 0) {
-            logger.info('No country codes to resolve');
-            return;
+        if (isoCodes.length > 0) {
+            // Get country mappings from target database for uncached codes
+            const countries = await this.targetDb.query('SELECT id, iso_code_2 FROM countries WHERE iso_code_2 = ANY($1)', [isoCodes]);
+            countries.forEach(c => this.countryCache.set(c.iso_code_2, c.id));
+            logger.info(`Resolved and cached ${countries.length} new country codes to IDs`);
         }
 
-        // Get country mappings from target database
-        const countries = await this.targetDb.query('SELECT id, iso_code_2 FROM countries WHERE iso_code_2 = ANY($1)', [isoCodes]);
-        const countryMap = new Map(countries.map(c => [c.iso_code_2, c.id]));
-
-        logger.info(`Resolved ${countryMap.size} country codes to IDs`);
-
-        // Update products with actual country IDs
+        // Update products with cached country IDs
         for (const product of products) {
-            if (product.country_id && countryMap.has(product.country_id)) {
-                product.country_id = countryMap.get(product.country_id);
+            if (product.country_id && this.countryCache.has(product.country_id)) {
+                product.country_id = this.countryCache.get(product.country_id);
             } else {
                 product.country_id = null; // Set to null if no mapping found
             }
         }
+
+        logger.info(`Used country cache for batch: ${products.length} products processed`);
     }
 
     async insertProducts(products) {

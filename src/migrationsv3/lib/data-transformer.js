@@ -37,6 +37,12 @@ class DataTransformer {
             'Isle of Man': 'IM',
             'Saudi Arabia': 'SA'
         };
+
+        // Cache for certificate provider lookups (providerName -> providerId)
+        this.certificateProviderCache = new Map();
+
+        // Cache for language lookups (languageCode -> languageId)
+        this.languageCache = new Map();
     }
 
     // Category transformations
@@ -75,6 +81,64 @@ class DataTransformer {
         };
     }
 
+    // Certificate provider cache resolver
+    async resolveCertificateProvider(providerName) {
+        if (this.certificateProviderCache.has(providerName)) {
+            logger.debug(`Certificate provider ${providerName} found in cache: ${this.certificateProviderCache.get(providerName)}`);
+            return this.certificateProviderCache.get(providerName);
+        }
+
+        if (!this.targetDb || typeof this.targetDb.query !== 'function') {
+            logger.debug(`Certificate provider ${providerName}: targetDb not available for resolution`);
+            return null;
+        }
+
+        try {
+            const providers = await this.targetDb.query(
+                'SELECT id FROM certificate_providers WHERE name = $1',
+                [providerName]
+            );
+
+            if (providers && providers.length > 0) {
+                const providerId = providers[0].id;
+                this.certificateProviderCache.set(providerName, providerId);
+                logger.debug(`Resolved and cached certificate provider ${providerName}: ${providerId}`);
+                return providerId;
+            } else {
+                logger.debug(`Certificate provider ${providerName} not found in target DB`);
+                this.certificateProviderCache.set(providerName, null); // Cache negative result
+                return null;
+            }
+        } catch (error) {
+            logger.warning(`Failed to resolve certificate provider ${providerName}`, { error: error.message });
+            return null;
+        }
+    }
+
+    // Language cache resolver
+    async resolveLanguageId(languageCode) {
+        if (this.languageCache.has(languageCode)) {
+            return this.languageCache.get(languageCode);
+        }
+
+        if (!this.targetDb || typeof this.targetDb.query !== 'function') {
+            return null;
+        }
+
+        try {
+            const languages = await this.targetDb.query('SELECT id FROM languages WHERE code = $1', [languageCode]);
+            if (languages.length > 0) {
+                const languageId = languages[0].id;
+                this.languageCache.set(languageCode, languageId);
+                return languageId;
+            }
+        } catch (error) {
+            logger.warning(`Failed to resolve language ${languageCode}`, { error: error.message });
+        }
+
+        return null;
+    }
+
     // Product transformations
     async transformProduct(sourceProduct) {
         const productId = uuidv4();
@@ -91,39 +155,27 @@ class DataTransformer {
             }
         }
 
-        // Map certification_type to certificate_provider_id (dynamically from target DB)
+        // Map certification_type to certificate_provider_id with caching
         let certificateProviderId = null;
         if (sourceProduct.certification_type) {
             const certType = String(sourceProduct.certification_type).trim();
 
-            // If targetDb available, dynamically resolve from target database
-            if (this.targetDb && typeof this.targetDb.query === 'function') {
-                try {
-                    // Map of certification_type to provider name suffix
-                    const typeToNameMap = {
-                        '4': 'PCGS',
-                        '5': 'NGC',
-                        '262': 'PMG',
-                        '6': 'Other'
-                    };
+            try {
+                // Map of certification_type to provider name
+                const typeToNameMap = {
+                    '4': 'PCGS',
+                    '5': 'NGC',
+                    '262': 'PMG',
+                    '6': 'Other'
+                };
 
-                    const providerName = typeToNameMap[certType];
-                    if (providerName) {
-                        // Query certificate provider by name from target database
-                        const providers = await this.targetDb.query(
-                            'SELECT id FROM certificate_providers WHERE name = $1',
-                            [providerName]
-                        );
-                        if (providers && providers.length > 0) {
-                            certificateProviderId = providers[0].id;
-                            logger.debug(`Resolved certificate provider ${providerName}: ${certificateProviderId}`);
-                        } else {
-                            logger.debug(`Certificate provider ${providerName} not found in target DB`);
-                        }
-                    }
-                } catch (error) {
-                    logger.warning(`Failed to resolve certificate provider for type ${certType}`, { error: error.message });
+                const providerName = typeToNameMap[certType];
+                if (providerName) {
+                    certificateProviderId = await this.resolveCertificateProvider(providerName);
+                    logger.debug(`Resolved certificate provider for certType ${certType} (${providerName}): ${certificateProviderId}`);
                 }
+            } catch (error) {
+                logger.warning(`Failed to resolve certificate provider for type ${certType}`, { error: error.message });
             }
         }
 
