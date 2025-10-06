@@ -233,9 +233,9 @@ class DataTransformer {
             status: this.determineProductStatus(sourceProduct),
             quantity: 1,
             price: parseFloat(sourceProduct.price) || 0,
-            sold_date: sourceProduct.sold_date || null,
+            sold_date: sourceProduct.eav_sold_date || sourceProduct.sold_date || null,
             archived_at: this.calculateArchivedAt(sourceProduct),
-            sold_price: sourceProduct.last_sold_price || null,
+            sold_price: sourceProduct.eav_sold_price || sourceProduct.last_sold_price || null,
             discount_price: null,
             ebay_offer_code: null,
             stars: 0,
@@ -347,8 +347,8 @@ class DataTransformer {
             }
         }
 
-        // Secondary source: if not archived and has sold_date, then 'sold'
-        if (product.sold_date) {
+        // Secondary source: if not archived and has sold_date (EAV or sales order), then 'sold'
+        if (product.eav_sold_date || product.sold_date) {
             return 'sold';
         }
 
@@ -358,9 +358,10 @@ class DataTransformer {
 
     calculateArchivedAt(product) {
         // Only calculate archived_at if product is archived (archived_status = 1)
-        // and has a sold_date
-        if (product.archived_status === 1 && product.sold_date) {
-            const soldDate = new Date(product.sold_date);
+        // and has a sold_date (EAV sold_on takes priority)
+        const soldDateValue = product.eav_sold_date || product.sold_date;
+        if (product.archived_status === 1 && soldDateValue) {
+            const soldDate = new Date(soldDateValue);
             const archivedDate = new Date(soldDate.getTime() + (21 * 24 * 60 * 60 * 1000)); // 21 days
             return archivedDate;
         }
