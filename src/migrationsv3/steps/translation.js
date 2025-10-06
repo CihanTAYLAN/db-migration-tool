@@ -195,6 +195,21 @@ class TranslationStep {
                     }
 
                     try {
+                        // Check if translation already exists and has meaningful content
+                        const existingTranslation = await this.targetDb.query(`
+                            SELECT id, title FROM category_translations
+                            WHERE category_id = $1 AND language_id = $2
+                            LIMIT 1
+                        `, [category.category_id, language.id]);
+
+                        // Skip if translation exists and has non-empty title (avoid unnecessary AWS cost)
+                        if (existingTranslation.length > 0 && existingTranslation[0].title &&
+                            existingTranslation[0].title.trim() !== '' &&
+                            existingTranslation[0].title.trim() !== category.title?.trim()) { // Different from source
+                            logger.debug(`Skipping translation for category ${category.category_id} to ${language.code} - already exists`);
+                            continue;
+                        }
+
                         // Prepare content for translation
                         const translationData = {
                             title: category.title || '',
@@ -357,6 +372,21 @@ class TranslationStep {
                     }
 
                     try {
+                        // Check if translation already exists and has meaningful content
+                        const existingTranslation = await this.targetDb.query(`
+                            SELECT id, title FROM product_translations
+                            WHERE product_id = $1 AND language_id = $2
+                            LIMIT 1
+                        `, [product.product_id, language.id]);
+
+                        // Skip if translation exists and has non-empty title (avoid unnecessary AWS cost)
+                        if (existingTranslation.length > 0 && existingTranslation[0].title &&
+                            existingTranslation[0].title.trim() !== '' &&
+                            existingTranslation[0].title.trim() !== product.title?.trim()) { // Different from source
+                            logger.debug(`Skipping translation for product ${product.product_id} to ${language.code} - already exists`);
+                            continue;
+                        }
+
                         // Prepare content for translation
                         const translationData = {
                             title: product.title || '',
