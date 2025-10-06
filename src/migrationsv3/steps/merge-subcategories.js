@@ -234,10 +234,29 @@ class SubcategoryMergerV3 {
     }
 
     async calculateParentSlugs() {
-        logger.info('Calculating parent slugs for all categories...');
+        logger.info('Calculating parent slugs for all categories in all languages...');
 
         try {
-            // Get all categories with their translations and parent relationships
+            // Get all languages
+            const languages = await this.targetDb.query('SELECT id, code FROM languages ORDER BY id');
+            logger.info(`Will calculate parent slugs for ${languages.length} languages`);
+
+            // For each language, calculate parent slugs separately
+            for (const language of languages) {
+                logger.info(`Calculating parent slugs for language: ${language.code}`);
+                await this.calculateParentSlugsForLanguage(language);
+            }
+
+            logger.success(`Completed parent slugs calculation for all ${languages.length} languages`);
+        } catch (error) {
+            logger.error('Failed to calculate parent slugs for all languages', { error: error.message });
+            throw error;
+        }
+    }
+
+    async calculateParentSlugsForLanguage(language) {
+        try {
+            // Get all categories with their translations for this language and parent relationships
             const categories = await this.targetDb.query(`
                 SELECT
                     c.id,
@@ -246,9 +265,14 @@ class SubcategoryMergerV3 {
                     ct.title
                 FROM categories c
                 LEFT JOIN category_translations ct ON c.id = ct.category_id
-                WHERE ct.language_id = (SELECT id FROM languages WHERE code = 'en' LIMIT 1)
+                WHERE ct.language_id = $1
                 ORDER BY c.id
-            `);
+            `, [language.id]);
+
+            if (categories.length === 0) {
+                logger.debug(`No categories found for language: ${language.code}`);
+                return;
+            }
 
             // Create a map for quick lookup
             const categoryMap = new Map();
@@ -316,22 +340,22 @@ class SubcategoryMergerV3 {
                 // Only update if parent_slugs is currently null
                 const currentTranslation = await this.targetDb.query(`
                     SELECT parent_slugs FROM category_translations
-                    WHERE category_id = $1 AND language_id = (SELECT id FROM languages WHERE code = 'en' LIMIT 1)
-                `, [category.id]);
+                    WHERE category_id = $1 AND language_id = $2
+                `, [category.id, language.id]);
 
                 if (currentTranslation.length > 0 && currentTranslation[0].parent_slugs === null) {
                     await this.targetDb.query(`
                         UPDATE category_translations
                         SET parent_slugs = $1, updated_at = NOW()
-                        WHERE category_id = $2 AND language_id = (SELECT id FROM languages WHERE code = 'en' LIMIT 1)
-                    `, [parentSlugs, category.id]);
+                        WHERE category_id = $2 AND language_id = $3
+                    `, [parentSlugs, category.id, language.id]);
                     updatedCount++;
                 }
             }
 
-            logger.success(`Updated parent slugs for ${updatedCount} categories`);
+            logger.success(`Updated parent slugs for ${updatedCount} categories in language: ${language.code}`);
         } catch (error) {
-            logger.error('Failed to calculate parent slugs', { error: error.message });
+            logger.error(`Failed to calculate parent slugs for language ${language.code}`, { error: error.message });
             throw error;
         }
     }

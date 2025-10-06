@@ -71,6 +71,12 @@ const config = {
             description: 'Order migration with customers, items, prices, and addresses',
             batchSize: 50,
             parallelLimit: 2
+        },
+        translation: {
+            enabled: true,
+            description: 'Batch translation of all categories and products to all available languages',
+            batchSize: 100,
+            parallelLimit: 2
         }
     },
 

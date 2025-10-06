@@ -15,8 +15,10 @@ const ProductsStep = require('./steps/products');
 const UpdateImagePathsStep = require('./steps/update-image-paths');
 const ProductMasterImagesUpdateStep = require('./steps/product-master-images-update');
 const MergeStep = require('./steps/merge-subcategories');
+const UpdateMasterCategoryIdsStep = require('./steps/update-master-category-ids');
 const CustomersStep = require('./steps/customers');
 const OrdersStep = require('./steps/orders');
+const TranslationStep = require('./steps/translation');
 
 class MigrationV3 {
     constructor(sourceUrl, sourceType, targetUrl, targetType) {
@@ -123,7 +125,6 @@ class MigrationV3 {
             // Fix master_category_id NULL fields after subcategory merge
             if (config.steps.updateMasterCategoryIds.enabled) {
                 logger.info('📂 Step 7: Update Master Category IDs');
-                const UpdateMasterCategoryIdsStep = require('./steps/update-master-category-ids');
                 const updateMasterCategoryIdsStep = new UpdateMasterCategoryIdsStep(this.targetDb, this.context.defaultLanguageId);
                 results.updateMasterCategoryIds = await updateMasterCategoryIdsStep.run();
             }
@@ -154,6 +155,14 @@ class MigrationV3 {
                     this.context.defaultLanguageId
                 );
                 results.orders = await ordersStep.run();
+            }
+
+            // Step 10: Translation
+            // Batch translation of all categories and products to all supported languages
+            if (config.steps.translation.enabled) {
+                logger.info('🌐 Step 10: Translation');
+                const translationStep = new TranslationStep(this.targetDb, config, this.context.defaultLanguageId);
+                results.translation = await translationStep.run();
             }
 
             // Calculate execution time
@@ -224,7 +233,6 @@ class MigrationV3 {
                     return await mergeStep.run();
 
                 case 'updateMasterCategoryIds':
-                    const UpdateMasterCategoryIdsStep = require('./steps/update-master-category-ids');
                     const updateMasterCategoryIdsStep = new UpdateMasterCategoryIdsStep(this.targetDb, this.context.defaultLanguageId);
                     return await updateMasterCategoryIdsStep.run();
 
@@ -247,6 +255,10 @@ class MigrationV3 {
                         this.context.defaultLanguageId
                     );
                     return await ordersStep.run();
+
+                case 'translation':
+                    const translationStep = new TranslationStep(this.targetDb, config, this.context.defaultLanguageId);
+                    return await translationStep.run();
 
                 default:
                     throw new Error(`Unknown step: ${stepName}`);
