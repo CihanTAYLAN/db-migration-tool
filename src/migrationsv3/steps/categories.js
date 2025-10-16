@@ -202,9 +202,16 @@ class CategoriesStep {
         // Build entity_id to category_id mapping from codes
         const categoryMapping = new Map();
         for (const cat of categories) {
+            // Updated format: url_key_parentId_entityId or category-parentId-entityId
             if (cat.code.includes('_')) {
                 const parts = cat.code.split('_');
-                const entityId = parseInt(parts[parts.length - 1]);
+                const entityId = parseInt(parts[parts.length - 1]); // Last part is entity_id
+                if (!isNaN(entityId)) {
+                    categoryMapping.set(entityId, cat.id);
+                }
+            } else if (cat.code.startsWith('category-')) {
+                const parts = cat.code.split('-');
+                const entityId = parseInt(parts[parts.length - 1]); // Last part is entity_id
                 if (!isNaN(entityId)) {
                     categoryMapping.set(entityId, cat.id);
                 }
@@ -214,9 +221,18 @@ class CategoriesStep {
         // Update parent relationships
         let updatedCount = 0;
         for (const cat of categories) {
+            let entityId = null;
+
+            // Extract entity_id from updated code format
             if (cat.code.includes('_')) {
                 const parts = cat.code.split('_');
-                const entityId = parseInt(parts[parts.length - 1]);
+                entityId = parseInt(parts[parts.length - 1]); // Last part is entity_id
+            } else if (cat.code.startsWith('category-')) {
+                const parts = cat.code.split('-');
+                entityId = parseInt(parts[parts.length - 1]); // Last part is entity_id
+            }
+
+            if (entityId && !isNaN(entityId)) {
                 const parentEntityId = await this.getParentEntityId(entityId);
 
                 if (parentEntityId && parentEntityId > 1) {

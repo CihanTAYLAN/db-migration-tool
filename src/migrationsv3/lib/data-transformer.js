@@ -48,9 +48,12 @@ class DataTransformer {
     // Category transformations
     transformCategory(sourceCategory, defaultLanguageId) {
         const categoryId = uuidv4();
+
+        // Include parent_id in code to handle duplicate category names under different parents
+        // Format: url_key_parentId_entityId or category-parentId-entityId
         const code = sourceCategory.url_key
-            ? `${sourceCategory.url_key}_${sourceCategory.entity_id}`
-            : `category-${sourceCategory.entity_id}`;
+            ? `${sourceCategory.url_key}_${sourceCategory.parent_id}_${sourceCategory.entity_id}`
+            : `category-${sourceCategory.parent_id}-${sourceCategory.entity_id}`;
 
         return {
             id: categoryId,

@@ -230,7 +230,7 @@ class CustomersStep {
                     phone: null,
                     phone_code: null,
                     password: null,
-                    is_view_price: true,
+                    is_view_price: false,
                     is_approved_for_credit_card: false,
                     is_approved_for_mailing: false,
                     is_locked_account: customer.is_active === 0 || customer.is_active === '0',

@@ -36,18 +36,6 @@ const config = {
             batchSize: 100,
             parallelLimit: 2
         },
-        updateImagePaths: {
-            enabled: true,
-            description: 'Update product image paths with backend URL prefix',
-            batchSize: 500,
-            parallelLimit: 1
-        },
-        productMasterImagesUpdate: {
-            enabled: true,
-            description: 'Update product master image IDs and is_master flags',
-            batchSize: 500,
-            parallelLimit: 1
-        },
         merge: {
             enabled: true,
             description: 'Subcategory merging',
@@ -58,6 +46,18 @@ const config = {
             enabled: true,
             description: 'Fix master_category_id NULL fields after merge',
             batchSize: 1000,
+            parallelLimit: 1
+        },
+        updateImagePaths: {
+            enabled: true,
+            description: 'Update product image paths with backend URL prefix',
+            batchSize: 500,
+            parallelLimit: 1
+        },
+        productMasterImagesUpdate: {
+            enabled: true,
+            description: 'Update product master image IDs and is_master flags',
+            batchSize: 500,
             parallelLimit: 1
         },
         customers: {
@@ -73,7 +73,7 @@ const config = {
             parallelLimit: 2
         },
         translation: {
-            enabled: true,
+            enabled: CSSFontFeatureValuesRule,
             description: 'Batch translation of all categories and products to all available languages',
             batchSize: 100,
             parallelLimit: 2

@@ -1,25 +1,22 @@
 /*
-# Alt Kategori Birleştirme Scripti - V3
+# Coins for Sale vs Sold Archive Category Merger - V3
 
-Bu script, migration tamamlandıktan sonra çalıştırılır ve kategoriler tablosunda
-code'ların '_' karakterinden split edildiğindeki ilk parçadan 2 tane kategori var ise,
-bu kategoriler teke düşürülüp içlerindeki ürünler birleştirilir.
+Bu script, migration tamamlandıktan sonra çalıştırılır ve Magento'daki
+"Coins for Sale" ve "Sold Archive" tree'lerinin alt kategorilerini birleştirir.
 
-V3 Özellikleri:
-- Parent slugs hesaplaması da dahil edildi
-- Batch processing ile performans iyileştirildi
-- Error handling geliştirildi
+V3 Business Logic:
+- Source'da paralel tree'ler var: Coins for Sale (1/2/3) + Sold Archive (1/2/5)
+- Alt kategoriler aynı isimlerde olabilir (örn: Sovereigns altında George III)
+- Bu kategori çifilerini merge ederek tek tree'e düşürmek gerekiyor
 
-## Mantık
-1. categories tablosundan code'u '_' içeren tüm kategorileri al
-2. Her code'u '_' ile split et ve ilk parçayı al (prefix)
-3. Aynı prefix'e sahip kategorileri grupla
-4. Eğer bir prefix altında 2+ kategori varsa:
-   - En küçük entity_id'ye sahip olanı "ana kategori" olarak tut
-   - Diğer kategorileri ana kategoriye merge et
-   - Ürünleri ana kategoriye taşı
-   - Eski kategorileri sil
-5. Tüm kategoriler için parent slugs hesapla
+## New Merge Logic (Path-based instead of Prefix-based)
+1. Categories tablosunda migration'dan kalan code'ları al
+2. Code'dan parent entity_id'yi çıkar: "george-iii_10_31" → parent: 10
+3. Source path'e göre hangi sale type'a aitse belirle:
+   - Entity 10-19 arası: Coins for Sale tree (aktif ürünler)
+   - Entity 20+ arası: Sold Archive tree (sold/archived ürünler)
+4. Aynı parent altında aynı isimli kategorileri merge et
+5. Ana kategori: Coins for Sale'dan gelen (aktif ürünleri temsil eden)
 
 ## Kullanım
 node src/migrationsv3/merge-subcategories.js
@@ -66,57 +63,254 @@ class SubcategoryMergerV3 {
     }
 
     async mergeSubcategories() {
-        logger.info('Starting subcategory merge process...');
+        logger.info('Starting Coins for Sale vs Sold Archive merge process...');
 
-        // Tüm kategorileri ve code'larını al (entity_id ile sıralı)
+        // Target DB'den tüm migration code'larını al (ana kategoriler + alt kategoriler)
         const categoriesQuery = `
             SELECT
                 c.id as category_id,
                 c.code,
                 ct.slug,
-                ct.title,
-                SPLIT_PART(c.code, '_', 1) as prefix
+                ct.title
             FROM categories c
             LEFT JOIN category_translations ct ON c.id = ct.category_id
-            WHERE c.code LIKE '%_%'  -- Sadece '_' içeren code'ları işle
+            WHERE c.code LIKE '%_%'  -- Tüm '_' içeren code'ları işle
             ORDER BY c.code
         `;
 
         const categories = await this.targetDb.query(categoriesQuery);
-        logger.info(`Found ${categories.length} categories with underscore in code`);
+        logger.info(`Found ${categories.length} categories with parent_id in code`);
 
         if (categories.length === 0) {
-            logger.warning('No categories found with underscore in code');
+            logger.warning('No categories found with parent_id in code format');
             return;
         }
 
-        // Code prefix'lerine göre grupla (george-iii_31 -> george-iii)
-        const prefixGroups = new Map();
+        // Parent entity_id'ye göre groupla: Coins for Sale (10-19) vs Sold Archive (20+)
+        const parentGroups = new Map(); // parentEntityId -> categoryList
 
         for (const category of categories) {
-            const prefix = category.prefix;
+            // Code format: "george-iii_10_31" → parts: ["george-iii", "10", "31"]
+            const parts = category.code.split('_');
+            if (parts.length !== 3) continue; // Skip invalid format
 
-            if (!prefixGroups.has(prefix)) {
-                prefixGroups.set(prefix, []);
+            const parentEntityId = parseInt(parts[1]); // Parent ID (10 = Sovereigns, 21 = Archive Sovereigns)
+
+            if (!parentGroups.has(parentEntityId)) {
+                parentGroups.set(parentEntityId, []);
             }
 
-            prefixGroups.get(prefix).push(category);
+            parentGroups.get(parentEntityId).push({
+                ...category,
+                parentEntityId,
+                slugPrefix: parts[0], // "george-iii"
+                originalEntityId: parseInt(parts[2]) // 31
+            });
+
+            logger.debug(`Added category ${category.title} (${category.code}) to parent group ${parentEntityId}`);
         }
 
-        logger.info(`Found ${prefixGroups.size} unique prefixes`);
+        logger.info(`Found ${parentGroups.size} source parent categories`);
+        logger.debug(`Parent group keys: ${Array.from(parentGroups.keys()).join(', ')}`);
+        for (const [key, group] of parentGroups) {
+            logger.debug(`Group ${key}: ${group.map(c => c.code).join(', ')}`);
+        }
 
-        // Sadece 2+ kategorisi olan prefix'leri işle
+        // Coins for Sale ve Sold Archive paralel tree'lerini birleştir
+        await this.mergeParallelTrees(parentGroups);
+
+        logger.success(`Parallel tree merge completed successfully`);
+    }
+
+    async mergeParallelTrees(parentGroups) {
+        // Her source parent category altında aynı isimli kategorileri karşılaştır
+        // Sovereigns (10) altında George III + Sovereigns (21) altında George III = birleştir
+
+        // Tüm paralel kategori çiftlerini map et: Coins for Sale (1/2/3) vs Sold Archive (1/2/5)
+        // Source'da level 3 kategori eşleşmeleri (KEY): Active(Satılık) ↔ Archive(Satılmış)
+        const sourceParentMapping = {
+            3: 5,    // ANACATEGORY: Coins for Sale Ana → Sold Archive Ana
+            5: 3,    // Inverse: Sold Archive Ana → Coins for Sale Ana
+            9: 20,   // Rarities <-> Rarities (Archive)
+            10: 21,  // Sovereigns <-> Sovereigns (Archive)
+            11: 22,  // Half Sovereigns <-> Half Sovereigns (Archive)
+            12: 23,  // Gold £5 and £2 <-> Gold £5 and £2 (Archive)
+            13: 24,  // World Coins <-> World Coins (Archive)
+            14: 25,  // Gold Guineas <-> Gold Guineas (Archive)
+            15: 26,  // Commonwealth Coins <-> Commonwealth Coins (Archive)
+            16: 27,  // Pre-decimal Proofs <-> Pre-decimal Proofs (Archive)
+            18: 29,  // Decimal Coins <-> Decimal Coins (Archive)
+            19: 30,  // Banknotes <-> Banknotes (Archive)
+            20: 9,   // Inverse mappings
+            21: 10,
+            22: 11,
+            23: 12,
+            24: 13,
+            25: 14,
+            26: 15,
+            27: 16,
+            28: 28,  // Colonial Coins (Archive only, no active counterpart)
+            29: 18,
+            30: 19
+        };
+
+        const mergeGroups = new Map(); // coinsForSaleCategoryId_soldArchiveCategoryId -> categoryList
+
+        for (const [parentEntityId, categories] of parentGroups) {
+            const correspondingParentId = sourceParentMapping[parentEntityId];
+
+            if (!correspondingParentId) continue;
+
+            for (const category of categories) {
+                const mergeKey = `${Math.min(parentEntityId, correspondingParentId)}_${Math.max(parentEntityId, correspondingParentId)}_${category.slugPrefix}`;
+
+                if (!mergeGroups.has(mergeKey)) {
+                    mergeGroups.set(mergeKey, []);
+                }
+
+                mergeGroups.get(mergeKey).push(category);
+            }
+        }
+
+        logger.info(`Created ${mergeGroups.size} merge groups`);
+        logger.debug(`Merge groups keys: ${Array.from(mergeGroups.keys()).join(', ')}`);
+
+        // Her merge grubu içinde 2+ kategori varsa (Coins for Sale + Sold Archive aynı isim) merge et
         let totalMerged = 0;
-
-        for (const [prefix, categoryGroup] of prefixGroups) {
-            if (categoryGroup.length >= 2) {
-                logger.info(`Processing prefix "${prefix}" with ${categoryGroup.length} categories`);
-                const mergedCount = await this.mergeCategoriesForPrefix(prefix, categoryGroup);
+        for (const [mergeKey, categories] of mergeGroups) {
+            if (categories.length >= 2) {
+                logger.info(`Merging ${categories.length} parallel categories for "${mergeKey}"`);
+                const mergedCount = await this.mergeParallelCategories(categories);
                 totalMerged += mergedCount;
+            } else {
+                logger.debug(`Skipping merge group "${mergeKey}" - only ${categories.length} categories`);
             }
         }
 
-        logger.success(`Subcategory merge completed: ${totalMerged} categories merged`);
+        logger.success(`Merged ${totalMerged} parallel categories`);
+        logger.info(`Remaining merge groups: ${mergeGroups.size - totalMerged} did not have duplicates to merge`);
+    }
+
+    async mergeParallelCategories(categories) {
+        // Ana kategorileri (parent_id null olan) için product count kontrolü
+        // Alt kategoriler için mevcut logic devam eder
+        const isMainCategories = categories.every(cat => !cat.parent_id);
+
+        if (isMainCategories) {
+            return await this.mergeMainCategories(categories);
+        } else {
+            return await this.mergeSubCategories(categories);
+        }
+    }
+
+    async mergeMainCategories(categories) {
+        logger.info(`Processing ${categories.length} main categories`);
+
+        // Coins for Sale versiyonunu tut, Sold Archive versiyonlarını sil
+        // Ürün count kontrolü yapmadan direkt merge et
+        const sortedCategories = categories.sort((a, b) => {
+            const aIsActive = a.parentEntityId < 20; // Coins for Sale
+            const bIsActive = b.parentEntityId < 20;
+
+            if (aIsActive === bIsActive) {
+                // Aynı type içindeyse entity_id'ye göre sırala
+                return a.originalEntityId - b.originalEntityId;
+            }
+
+            return bIsActive ? 1 : -1; // Active öğren önce
+        });
+
+        const mainCategory = sortedCategories[0]; // Ana kategori (Coins for Sale'dan olan)
+        const categoriesToMerge = sortedCategories.slice(1);
+
+        logger.info(`Main category: ${mainCategory.title} (${mainCategory.code}) - keeping as active`);
+
+        // Diğer versiyonları sil
+        for (const categoryToMerge of categoriesToMerge) {
+            await this.deleteMainCategory(categoryToMerge.category_id, categoryToMerge.title, categoryToMerge.code);
+            logger.info(`Deleted duplicate main category: ${categoryToMerge.title} (${categoryToMerge.code})`);
+        }
+
+        return categoriesToMerge.length;
+    }
+
+    async mergeMainCategoriesWithProducts(categories) {
+        // Priority: Coins for Sale (aktif ürünler) önceki sırada
+        const sortedCategories = categories.sort((a, b) => {
+            const aIsActive = a.parentEntityId < 20; // Coins for Sale
+            const bIsActive = b.parentEntityId < 20;
+
+            if (aIsActive === bIsActive) {
+                // Aynı type içindeyse entity_id'ye göre sırala
+                return a.originalEntityId - b.originalEntityId;
+            }
+
+            return bIsActive ? 1 : -1; // Active öğren önce
+        });
+
+        const mainCategory = sortedCategories[0]; // Ana kategori (Coins for Sale'dan olan)
+        const categoriesToMerge = sortedCategories.slice(1);
+
+        logger.info(`Main category (with products): ${mainCategory.title} (${mainCategory.code}) - ${mainCategory.productCount} products`);
+
+        // Ürünleri ana kategoriye taşı
+        for (const categoryToMerge of categoriesToMerge) {
+            await this.moveProductsToMainCategory(categoryToMerge.category_id, mainCategory.category_id);
+        }
+
+        // Eski kategorileri sil
+        for (const categoryToMerge of categoriesToMerge) {
+            await this.deleteMainCategory(categoryToMerge.category_id, categoryToMerge.title, categoryToMerge.code);
+        }
+
+        return categoriesToMerge.length;
+    }
+
+    async mergeSubCategories(categories) {
+        // Mevcut alt kategori merge logic (değişiklik yok)
+        const sortedCategories = categories.sort((a, b) => {
+            const aIsActive = a.parentEntityId < 20; // Coins for Sale
+            const bIsActive = b.parentEntityId < 20;
+
+            if (aIsActive === bIsActive) {
+                // Aynı type içindeyse entity_id'ye göre sırala
+                return a.originalEntityId - b.originalEntityId;
+            }
+
+            return bIsActive ? 1 : -1; // Active öğren önce
+        });
+
+        const mainCategory = sortedCategories[0]; // Ana kategori (Coins for Sale'dan olan)
+        const categoriesToMerge = sortedCategories.slice(1);
+
+        logger.info(`Main subcategory: ${mainCategory.title} (${mainCategory.code})`);
+
+        // Ürünleri ana kategoriye taşı
+        for (const categoryToMerge of categoriesToMerge) {
+            await this.moveProductsToMainCategory(categoryToMerge.category_id, mainCategory.category_id);
+        }
+
+        // Eski kategorileri sil
+        for (const categoryToMerge of categoriesToMerge) {
+            await this.deleteCategory(categoryToMerge.category_id);
+            logger.info(`Deleted subcategory: ${categoryToMerge.title} (${categoryToMerge.code})`);
+        }
+
+        return categoriesToMerge.length;
+    }
+
+    async getCategoryProductCount(categoryId) {
+        const result = await this.targetDb.query(`
+            SELECT COUNT(*) as count FROM product_categories
+            WHERE category_id = $1
+        `, [categoryId]);
+
+        return parseInt(result[0].count) || 0;
+    }
+
+    async deleteMainCategory(categoryId, title, code) {
+        logger.info(`Deleting main category: ${title} (${code})`);
+        await this.deleteCategory(categoryId);
     }
 
     async mergeCategoriesForPrefix(prefix, categories) {
