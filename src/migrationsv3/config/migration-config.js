@@ -73,7 +73,7 @@ const config = {
             parallelLimit: 2
         },
         translation: {
-            enabled: CSSFontFeatureValuesRule,
+            enabled: false,
             description: 'Batch translation of all categories and products to all available languages',
             batchSize: 100,
             parallelLimit: 2
