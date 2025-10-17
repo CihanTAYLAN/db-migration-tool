@@ -24,7 +24,7 @@ class ProductsStep {
 
         this.batchProcessor = new BatchProcessor({
             batchSize: config.steps.products.batchSize,
-            parallelLimit: 1, // Sequential processing to avoid transaction conflicts
+            parallelLimit: config.steps.products.parallelLimit || 2, // Parallel processing for performance
             retryAttempts: config.processing.retryAttempts,
             retryDelay: config.processing.retryDelay,
             timeout: config.processing.timeout,
@@ -51,8 +51,38 @@ class ProductsStep {
                     [pmgId, 'PMG', 'https://drakesterling-backend.dev.uplide.com/api/ecommerce/file-manager/stream//Grading%20Services/pmg.png']
                 );
                 logger.info('Created PMG certificate provider');
+            }
+
+            // Ensure PCGS exists
+            if (!providerMap.has('PCGS')) {
+                const pcgsId = uuidv4();
+                await this.targetDb.query(
+                    'INSERT INTO certificate_providers (id, name, image, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())',
+                    [pcgsId, 'PCGS', 'https://drakesterling-backend.dev.uplide.com/api/ecommerce/file-manager/stream//Grading%20Services/pcgs.png']
+                );
+                logger.info('Created PCGS certificate provider');
+            }
+
+            // Ensure NGC exists
+            if (!providerMap.has('NGC')) {
+                const ngcId = uuidv4();
+                await this.targetDb.query(
+                    'INSERT INTO certificate_providers (id, name, image, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())',
+                    [ngcId, 'NGC', 'https://drakesterling-backend.dev.uplide.com/api/ecommerce/file-manager/stream//Grading%20Services/ngc.png']
+                );
+                logger.info('Created NGC certificate provider');
+            }
+
+            // Ensure Uncertified exists (for unknown certificate providers)
+            if (!providerMap.has('Uncertified')) {
+                const uncertifiedId = uuidv4();
+                await this.targetDb.query(
+                    'INSERT INTO certificate_providers (id, name, image, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())',
+                    [uncertifiedId, 'Uncertified', null]
+                );
+                logger.info('Created Uncertified certificate provider');
             } else {
-                logger.info('PMG certificate provider already exists');
+                logger.info('Uncertified certificate provider already exists');
             }
 
             // Ensure Other exists
@@ -67,12 +97,110 @@ class ProductsStep {
                 logger.info('Other certificate provider already exists');
             }
 
+            // Ensure provider badges exist for all providers
+            await this.ensureCertificateProviderBadges();
+
             // Ensure translations exist for PMG and Other
             await this.ensureCertificateProviderTranslations();
 
             logger.success('Certificate providers ensured');
         } catch (error) {
             logger.error('Failed to ensure certificate providers', { error: error.message });
+            throw error;
+        }
+    }
+
+    async ensureCertificateProviderBadges() {
+        logger.info('Ensuring certificate provider badges exist for all providers...');
+
+        try {
+            // Get all providers
+            const providers = await this.targetDb.query('SELECT id, name FROM certificate_providers');
+            const providerMap = new Map(providers.map(p => [p.name, p.id]));
+
+            // Define standard badges for all providers
+            const standardBadges = [
+                { name: 'Gold shield', description: 'Premium certification shield' },
+                { name: 'NFC technology', description: 'Near Field Communication enabled' },
+                { name: 'True View images', description: 'High-resolution magnification technology' }
+            ];
+
+            // Check existing badges (only provider relationship, no name column in main table)
+            const existingBadges = await this.targetDb.query('SELECT id, certificate_provider_id FROM certificate_provider_badges');
+            const badgeKeySet = new Set();
+
+            existingBadges.forEach(badge => {
+                const key = badge.certificate_provider_id;
+                badgeKeySet.add(key); // Track provider IDs that already have badges
+            });
+
+            logger.info(`Found ${existingBadges.length} existing badges across all providers`);
+
+            // Also check translations to avoid duplicate badge creation per provider
+            const existingTranslations = await this.targetDb.query('SELECT certificate_provider_badge_id, name FROM certificate_provider_badge_translations');
+
+            // Group badges by provider for quick lookup
+            const providerBadgeMap = new Map();
+            for (const badge of existingBadges) {
+                if (!providerBadgeMap.has(badge.certificate_provider_id)) {
+                    providerBadgeMap.set(badge.certificate_provider_id, []);
+                }
+                providerBadgeMap.get(badge.certificate_provider_id).push(badge.id);
+            }
+
+            // Get language ID for translations
+            const languages = await this.targetDb.query('SELECT id FROM languages WHERE code = $1', ['en']);
+            const englishLanguageId = languages.length > 0 ? languages[0].id : 'en'; // fallback
+
+            // Create badges for each provider
+            for (const [providerName, providerId] of providerMap) {
+                if (!providerId) continue;
+
+                // Check if this provider already has badges
+                if (providerBadgeMap.has(providerId)) {
+                    logger.debug(`Provider ${providerName} already has badges, skipping`);
+                    continue;
+                }
+
+                // Create 3 standard badges for this provider
+                const providerBadges = [];
+                for (const badgeData of standardBadges) {
+                    const badgeId = uuidv4();
+
+                    // Insert main badge record
+                    await this.targetDb.query(`
+                        INSERT INTO certificate_provider_badges (
+                            id, icon, certificate_provider_id, created_at, updated_at
+                        ) VALUES ($1, $2, $3, NOW(), NOW())
+                    `, [
+                        badgeId,
+                        badgeData.icon || null, // Add icon field (will be null for now)
+                        providerId
+                    ]);
+
+                    // Insert translation record
+                    await this.targetDb.query(`
+                        INSERT INTO certificate_provider_badge_translations (
+                            id, name, description, certificate_provider_badge_id, language_id, created_at, updated_at
+                        ) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+                    `, [
+                        uuidv4(),
+                        badgeData.name,
+                        badgeData.description,
+                        badgeId,
+                        englishLanguageId
+                    ]);
+
+                    providerBadges.push(badgeData.name);
+                    logger.debug(`Created badge "${badgeData.name}" for provider ${providerName}`);
+                }
+
+                logger.info(`Created ${providerBadges.length} badges for provider ${providerName}: ${providerBadges.join(', ')}`);
+            }
+
+            logger.success('Certificate provider badges ensured for all providers');
+        } catch (error) {
+            logger.error('Failed to ensure certificate provider badges', { error: error.message });
             throw error;
         }
     }
@@ -176,8 +304,7 @@ class ProductsStep {
             // 4. Migrate product prices separately (after products are inserted)
             await this.migrateProductPrices(products);
 
-            // 5. Migrate product images
-            await this.migrateProductImages(products);
+            // 5. Note: Product images are now migrated in the separate combined image processing step
 
             // 6. Migrate product certificate provider badges
             await this.migrateProductCertificateProviderBadges(products);
@@ -185,14 +312,17 @@ class ProductsStep {
             // 7. Update master category IDs for all products
             await this.updateMasterCategoryIds(products);
 
+            // 7.5. Migrate product images and set master image IDs
+            await this.migrateProductImages(products);
+
             // 8. Update master image IDs for all products
             await this.updateMasterImageIds(products);
 
             // 9. Ensure Xero tenants exist
             await this.ensureXeroTenants();
 
-            // 9. Set Xero tenant IDs for products (based on categories or default)
-            await this.updateXeroTenantIds(products);
+            // 10. Set Xero account IDs for products (based on categories or default)
+            await this.updateXeroAccountIds(products);
 
             logger.success(`Products migration completed: ${result.success} success, ${result.failed} failed`);
 
@@ -257,6 +387,8 @@ class ProductsStep {
                 cped_sold_on.value as eav_sold_date,
                 cped_sold_price.value as eav_sold_price,
                 cpev_sort.value as sort_string,
+                cpei_status.value as status,
+                cpei_visibility.value as visibility,
                 GROUP_CONCAT(DISTINCT ccp.category_id) as category_ids
             FROM catalog_product_entity cpe
             LEFT JOIN catalog_product_flat_1 cpf ON cpe.entity_id = cpf.entity_id
@@ -273,6 +405,8 @@ class ProductsStep {
             LEFT JOIN catalog_product_entity_varchar cpevs_grade_suffix ON cpe.entity_id = cpevs_grade_suffix.entity_id AND cpevs_grade_suffix.attribute_id = 153 AND cpevs_grade_suffix.store_id = 0
             LEFT JOIN catalog_product_entity_int cpei_cert_type ON cpe.entity_id = cpei_cert_type.entity_id AND cpei_cert_type.attribute_id = 147 AND cpei_cert_type.store_id = 0
             LEFT JOIN catalog_product_entity_int cpei_archived ON cpe.entity_id = cpei_archived.entity_id AND cpei_archived.attribute_id = 144 AND cpei_archived.store_id = 0
+            LEFT JOIN catalog_product_entity_int cpei_status ON cpe.entity_id = cpei_status.entity_id AND cpei_status.attribute_id = 97 AND cpei_status.store_id = 0
+            LEFT JOIN catalog_product_entity_int cpei_visibility ON cpe.entity_id = cpei_visibility.entity_id AND cpei_visibility.attribute_id = 99 AND cpei_visibility.store_id = 0
             LEFT JOIN catalog_product_entity_datetime cped_sold_on ON cpe.entity_id = cped_sold_on.entity_id AND cped_sold_on.attribute_id = (SELECT attribute_id FROM eav_attribute WHERE attribute_code = 'sold_on' AND entity_type_id = 4) AND cped_sold_on.store_id = 0
             LEFT JOIN catalog_product_entity_decimal cped_sold_price ON cpe.entity_id = cped_sold_price.entity_id AND cped_sold_price.attribute_id = (SELECT attribute_id FROM eav_attribute WHERE attribute_code = 'sold_price' AND entity_type_id = 4) AND cped_sold_price.store_id = 0
             LEFT JOIN catalog_product_entity_varchar cpev_sort ON cpe.entity_id = cpev_sort.entity_id AND cpev_sort.attribute_id = 141 AND cpev_sort.store_id = 0
@@ -299,7 +433,7 @@ class ProductsStep {
             GROUP BY cpe.entity_id, cpe.sku, cpevs_name.value, cped.value, cpf.name, cpf.price, cpf.description, cpf.short_description,
                      cpf.image, cpf.url_key, cpe.created_at, cpe.updated_at, cpevs_meta_title.value,
                      cpevs_meta_desc.value, cpet_cert.value, cpet_coin.value, cpet_desc.value, cpevs_country_manuf.value, cpevs_grade_prefix.value,
-                     cped_grade_value.value, cpevs_grade_suffix.value, cpf.year, cpf.country, cpf.country_value, cpei_cert_type.value, sold_dates.first_sale_date, sold_prices.last_sold_price, cpev_sort.value, cped_sold_on.value, cped_sold_price.value
+                     cped_grade_value.value, cpevs_grade_suffix.value, cpf.year, cpf.country, cpf.country_value, cpei_cert_type.value, sold_dates.first_sale_date, sold_prices.last_sold_price, cpev_sort.value, cped_sold_on.value, cped_sold_price.value, cpei_status.value, cpei_visibility.value
             ORDER BY cpe.entity_id
         `;
 
@@ -816,13 +950,17 @@ class ProductsStep {
 
                 if (!productId) continue;
 
+                // Apply URL prefix for backend streaming
+                const backendUrlPrefix = 'https://drakesterling-backend.dev.uplide.com/api/ecommerce/file-manager/stream/product/';
+                const fullImageUrl = image.image_path.startsWith('/') ? backendUrlPrefix + image.image_path.slice(1) : backendUrlPrefix + image.image_path;
+
                 // Determine if this is the master image (position = 1 or first image)
                 const isMaster = image.position === 1 || image.position === '1' ||
                     (targetImages.filter(img => img.product_id === productId).length === 0);
 
                 targetImages.push({
                     id: uuidv4(),
-                    image_url: image.image_path,
+                    image_url: fullImageUrl,
                     alt: image.label || null,
                     position: parseInt(image.position) || 1,
                     is_master: isMaster,
@@ -1081,16 +1219,23 @@ class ProductsStep {
                     continue;
                 }
 
-                // Find the master category - enhanced logic with fallbacks
-                let masterCategoryId = await this.findMasterCategoryId(targetCategories, sourceCategoryIds);
+                // Find the master category - improved: use first category from product's category_ids consistently
+                let masterCategoryId = null;
 
-                if (!masterCategoryId) {
-                    // Fallback: Pick the first available category (any category that exists)
-                    if (targetCategories.length > 0) {
-                        masterCategoryId = targetCategories[0].id;
-                        fallbackCount++;
-                        if (fallbackCount <= 5) {
-                            logger.debug(`Using fallback category ${targetCategories[0].code} for product ${productWebSku}`);
+                if (sourceCategoryIds.length > 0) {
+                    const firstSourceCategoryId = sourceCategoryIds[0]; // Always use first category_id consistently
+
+                    // Find exact match with first category
+                    masterCategoryId = await this.findMasterCategoryIdForSingle(targetCategories, firstSourceCategoryId);
+
+                    if (!masterCategoryId) {
+                        // Fallback only if absolutely no match found - use the first category in list
+                        if (targetCategories.length > 0) {
+                            masterCategoryId = targetCategories[0].id;
+                            fallbackCount++;
+                            if (fallbackCount <= 5) {
+                                logger.warn(`No category match found for source category ${firstSourceCategoryId}, falling back to ${targetCategories[0].code} for product ${productWebSku}`);
+                            }
                         }
                     }
                 }
@@ -1207,6 +1352,30 @@ class ProductsStep {
         } catch (error) {
             logger.error('Failed to update master image IDs', { error: error.message });
         }
+    }
+
+    // Improved: Find master category for a single source category ID
+    async findMasterCategoryIdForSingle(targetCategories, firstSourceCategoryId) {
+        // Try to find exact match
+        for (const targetCategory of targetCategories) {
+            let entityId = null;
+
+            if (targetCategory.code.includes('_')) {
+                // url_key_entity_id format
+                const parts = targetCategory.code.split('_');
+                entityId = parseInt(parts[parts.length - 1]);
+            } else if (targetCategory.code.startsWith('category-')) {
+                // category-entity_id format
+                const parts = targetCategory.code.split('-');
+                entityId = parseInt(parts[parts.length - 1]);
+            }
+
+            if (!isNaN(entityId) && entityId === firstSourceCategoryId) {
+                return targetCategory.id;
+            }
+        }
+
+        return null; // No match found
     }
 
     async findMasterCategoryId(targetCategories, sourceCategoryIds) {
@@ -1351,11 +1520,11 @@ class ProductsStep {
         }
     }
 
-    async updateXeroTenantIds(products) {
-        logger.info('Setting Xero tenant IDs for products based on category mapping...');
+    async updateXeroAccountIds(products) {
+        logger.info('Setting Xero account IDs for products based on improved mapping logic...');
 
         try {
-            // Xero account mapping from user's list (codes as keys, identifiers)
+            // Direct Xero account mapping (name to code)
             const xeroAccountMapping = {
                 'Sales PCGS fees': '41051',
                 'Sales - Pre-grade fees': '41055',
@@ -1392,10 +1561,7 @@ class ProductsStep {
                 'Lot transfers suspense account': '49000',
                 'Sales - Collaborative deals': '49997',
                 'Sales - Agent bids': '49998',
-                'Sales - Commission refund': '49999',
-                'Unfranked portfolio income': '50001',
-                'Discounted capital gains and CGT concession from portfolio investments': '50002',
-                'Comm (test account)': '9998test'
+                'Sales - Commission refund': '49999'
             };
 
             // Get product mappings
@@ -1410,9 +1576,13 @@ class ProductsStep {
             );
 
             const productMap = new Map(targetProducts.map(p => [p.product_web_sku, p.id]));
-            logger.info(`Found ${productMap.size} products in target database for Xero tenant ID update`);
+            logger.info(`Found ${productMap.size} products in target database for Xero account ID update`);
 
-            // Get category mappings for account lookup
+            // IMPROVED: Build smarter category-to-account mapping
+            // Use both title matching and keyword-based logic
+            const categoryToAccountMap = new Map();
+
+            // Get categories with their translations
             const targetCategories = await this.targetDb.query(`
                 SELECT c.id, c.code, ct.slug, ct.title
                 FROM categories c
@@ -1420,32 +1590,71 @@ class ProductsStep {
                 WHERE ct.language_id = $1
             `, [this.defaultLanguageId]);
 
-            logger.info(`Found ${targetCategories.length} categories in target database`);
+            logger.info(`Building improved category-to-account mapping for ${targetCategories.length} categories...`);
 
-            // Create category ID to name mapping for Xero account lookup
-            const categoryToAccountMap = new Map();
+            // Create better mapping logic
             for (const cat of targetCategories) {
+                if (!cat.title) continue;
+
+                const categoryTitle = cat.title.toLowerCase().trim();
+                let xeroAccountCode = null;
+
+                // Extract entity ID from code for fallback
+                let categoryEntityId = null;
                 if (cat.code.includes('_')) {
                     const parts = cat.code.split('_');
-                    const entityId = parseInt(parts[parts.length - 1]);
-                    if (!isNaN(entityId) && cat.title) {
-                        // Try to find matching Xero account based on category name
-                        for (const [accountName, accountCode] of Object.entries(xeroAccountMapping)) {
-                            if (cat.title.toLowerCase().includes(accountName.toLowerCase().split(' - ')[0]) ||
-                                accountName.toLowerCase().includes(cat.title.toLowerCase())) {
-                                categoryToAccountMap.set(entityId, accountCode);
-                                break;
-                            }
-                        }
-                    }
+                    categoryEntityId = parseInt(parts[parts.length - 1]);
+                }
+
+                // IMPROVED: More intelligent keyword matching
+                // Priority: Full title match → Partial match → Keyword match
+
+                // 1. Full/partial title matches (highest priority)
+                if (categoryTitle.includes('decimal coins')) {
+                    xeroAccountCode = '41450';
+                } else if (categoryTitle.includes('decimal banknotes') || categoryTitle === 'decimal banknotes') {
+                    xeroAccountCode = '41850';
+                } else if (categoryTitle.includes('pre-decimal coins')) {
+                    xeroAccountCode = '41100';
+                } else if (categoryTitle.includes('pre-decimal banknotes')) {
+                    xeroAccountCode = '41800';
+                } else if (categoryTitle.includes('proof coins')) {
+                    xeroAccountCode = '41400';
+                } else if (categoryTitle.includes('sovereigns')) {
+                    xeroAccountCode = '41100';
+                } else if (categoryTitle.includes('latest issues') || categoryTitle.includes('latest coins')) {
+                    xeroAccountCode = '41600'; // Recent coins
+                }
+
+                // 2. Country-specific matches (if not already matched)
+                if (!xeroAccountCode && categoryTitle.includes('canadian')) {
+                    xeroAccountCode = '41510';
+                } else if (!xeroAccountCode && categoryTitle.includes('great britain')) {
+                    xeroAccountCode = '41530';
+                } else if (!xeroAccountCode && categoryTitle.includes('united states')) {
+                    xeroAccountCode = '41560';
+                } else if (!xeroAccountCode && categoryTitle.includes('south african')) {
+                    xeroAccountCode = '41550';
+                }
+
+                // 3. Fallback: Store mapping for later use
+                if (xeroAccountCode && categoryEntityId) {
+                    categoryToAccountMap.set(categoryEntityId, xeroAccountCode);
+                    logger.debug(`Mapped category "${cat.title}" (ID: ${cat.id}) to Xero account: ${xeroAccountCode}`);
+                } else if (categoryEntityId) {
+                    logger.debug(`No Xero account mapping found for category "${cat.title}" (ID: ${cat.id})`);
                 }
             }
 
-            logger.info(`Created Xero account mapping for ${categoryToAccountMap.size} categories`);
+            logger.info(`Created improved category mapping for ${categoryToAccountMap.size} categories`);
 
-            // Update Xero tenant IDs for each product based on master_category_id
+            // Update Xero account IDs for each product
             let updatedCount = 0;
             let processedCount = 0;
+            let defaultUsed = 0;
+            let categoryMapped = 0;
+
+            logger.info(`Processing ${products.length} products for Xero account updates...`);
 
             for (const product of products) {
                 processedCount++;
@@ -1453,58 +1662,89 @@ class ProductsStep {
                 const productId = productMap.get(productWebSku);
 
                 if (!productId) {
-                    if (processedCount <= 5) { // Log first 5 missing products
+                    if (processedCount <= 5) {
                         logger.debug(`Product not found in target: ${productWebSku}`);
                     }
                     continue;
                 }
 
-                if (!product.category_ids) {
-                    if (processedCount <= 5) { // Log first 5 products without categories
-                        logger.debug(`Product has no category_ids: ${productWebSku}`);
+                let xeroAccountId = null;
+
+                // Priority 1: Use category-based mapping
+                if (product.category_ids) {
+                    const sourceCategoryIds = product.category_ids
+                        .split(',')
+                        .map(id => parseInt(id.trim()))
+                        .filter(id => !isNaN(id));
+
+                    // Find first category that has a mapping
+                    for (const sourceCategoryId of sourceCategoryIds) {
+                        xeroAccountId = categoryToAccountMap.get(sourceCategoryId);
+                        if (xeroAccountId) {
+                            categoryMapped++;
+                            logger.debug(`Mapped product ${productWebSku} to Xero account ${xeroAccountId} via category ${sourceCategoryId}`);
+                            break;
+                        }
                     }
-                    continue;
                 }
 
-                // Get all category IDs for this product
-                const sourceCategoryIds = product.category_ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+                // Priority 2: Intelligent fallback based on product characteristics
+                if (!xeroAccountId) {
+                    // Check product SKU or name for hints about the type
+                    const productSkuLower = product.product_sku.toLowerCase();
+                    const productNameLower = (product.name || '').toLowerCase();
 
-                // Find Xero account (use first category that has a mapping)
-                let xeroTenantId = null;
-                for (const sourceCategoryId of sourceCategoryIds) {
-                    xeroTenantId = categoryToAccountMap.get(sourceCategoryId);
-                    if (xeroTenantId) {
-                        break; // Use first valid Xero account found
+                    // Specific SKU/name pattern matching
+                    if (productSkuLower.includes('sovereign') || productNameLower.includes('sovereign')) {
+                        xeroAccountId = '41100'; // Sales - Sovereigns and Halves
+                    } else if (productSkuLower.includes('decimal') || productNameLower.includes('decimal')) {
+                        xeroAccountId = '41450'; // Sales - Decimal Coins
+                    } else if (productSkuLower.includes('fiji') || productNameLower.includes('fiji')) {
+                        xeroAccountId = '41520'; // Sales - Fiji
+                    } else if (productSkuLower.includes('canida') || productNameLower.includes('canadian')) {
+                        xeroAccountId = '41510'; // Sales - Canada
+                    } else if (productSkuLower.includes('commemorative') || productNameLower.includes('commemorative')) {
+                        xeroAccountId = '42000'; // Sales - Proclamation Coins
+                    } else if (product.certification_number || product.certification_type) {
+                        // Products with certification - could be grade fee related
+                        if (product.certification_type === '262' || product.certification_type === '4') {
+                            // PMG or PCGS - use their grading fees
+                            xeroAccountId = product.certification_type === '262' ? '41950' : '41051';
+                        } else {
+                            xeroAccountId = '41051'; // PCGS fees as default for certified items
+                        }
+                    }
+
+                    if (xeroAccountId) {
+                        logger.debug(`Fallback Xero mapping for ${productWebSku}: ${xeroAccountId} (via product characteristics)`);
                     }
                 }
 
-                // If no category mapping found, use default "Sales - Commission refund"
-                if (!xeroTenantId) {
-                    xeroTenantId = xeroAccountMapping['Sales - Commission refund'];
+                // Final fallback: Use default commission refund account
+                if (!xeroAccountId) {
+                    xeroAccountId = '49999'; // Sales - Commission refund
+                    defaultUsed++;
+                    logger.debug(`Using default Xero account ${xeroAccountId} for product ${productWebSku}`);
                 }
 
-                if (!xeroTenantId) {
-                    if (processedCount <= 5) { // Log first 5 products with unmapped categories
-                        logger.debug(`Using default Xero account for product ${productWebSku} (categories: ${sourceCategoryIds.join(',')})`);
-                    }
-                    xeroTenantId = '49999'; // Hard-coded default
-                }
-
+                // Update the product
                 await this.targetDb.query(
-                    'UPDATE products SET xero_tenant_id = $1, updated_at = NOW() WHERE id = $2',
-                    [xeroTenantId, productId]
+                    'UPDATE products SET xero_account_id = $1, updated_at = NOW() WHERE id = $2',
+                    [xeroAccountId, productId]
                 );
+
                 updatedCount++;
 
-                if (updatedCount <= 5) { // Log first 5 successful updates
-                    logger.debug(`Set xero_tenant_id to ${xeroTenantId} for product ${productWebSku}`);
+                if (updatedCount <= 10) {
+                    logger.info(`Set xero_account_id to ${xeroAccountId} for product ${productWebSku}`);
                 }
             }
 
-            logger.info(`Processed ${processedCount} products, updated ${updatedCount} Xero tenant IDs`);
-            logger.success(`Updated Xero tenant IDs for ${updatedCount} products`);
+            logger.info(`Processed ${processedCount} products, updated ${updatedCount} Xero account IDs`);
+            logger.info(`Category-based mappings: ${categoryMapped}, Fallback/characteristic mappings: ${processedCount - categoryMapped - defaultUsed}, Default used: ${defaultUsed}`);
+            logger.success(`Updated Xero account IDs for ${updatedCount} products with improved logic`);
         } catch (error) {
-            logger.error('Failed to update Xero tenant IDs', { error: error.message });
+            logger.error('Failed to update Xero account IDs', { error: error.message });
         }
     }
 }

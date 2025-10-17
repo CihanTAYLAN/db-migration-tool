@@ -12,8 +12,6 @@ const config = require('./config/migration-config');
 const PrepareStep = require('./steps/prepare');
 const CategoriesStep = require('./steps/categories');
 const ProductsStep = require('./steps/products');
-const UpdateImagePathsStep = require('./steps/update-image-paths');
-const ProductMasterImagesUpdateStep = require('./steps/product-master-images-update');
 const MergeStep = require('./steps/merge-subcategories');
 const UpdateMasterCategoryIdsStep = require('./steps/update-master-category-ids');
 const CustomersStep = require('./steps/customers');
@@ -97,42 +95,34 @@ class MigrationV3 {
                 results.products = await productsStep.run();
             }
 
-            // Step 4: Update Image Paths
-            // Convert old media URLs to new format with proper domain
-            if (config.steps.updateImagePaths.enabled) {
-                logger.info('🖼️  Step 4: Update Image Paths');
-                const updateImagePathsStep = new UpdateImagePathsStep(this.sourceDb, this.targetDb, config);
-                results.updateImagePaths = await updateImagePathsStep.run();
-            }
+            // // Step 4: Combined Image Processing
+            // // Update image paths with backend prefix and set master images
+            // if (config.steps.combinedImageProcessing.enabled) {
+            //     logger.info('🖼️  Step 4: Combined Image Processing');
+            //     const combinedImageProcessingStep = new CombinedImageProcessingStep(this.sourceDb, this.targetDb, config);
+            //     results.combinedImageProcessing = await combinedImageProcessingStep.run();
+            // }
 
-            // Step 5: Product Master Images Update
-            // Set master_image_id for each product based on position = 1 or first image
-            if (config.steps.productMasterImagesUpdate.enabled) {
-                logger.info('🏷️  Step 5: Product Master Images Update');
-                const productMasterImagesUpdateStep = new ProductMasterImagesUpdateStep(this.sourceDb, this.targetDb, config);
-                results.productMasterImagesUpdate = await productMasterImagesUpdateStep.run();
-            }
-
-            // Step 6: Merge
+            // Step 5: Merge
             // Merge duplicate subcategories based on URL key prefixes + calculate parent slugs
             if (config.steps.merge.enabled) {
-                logger.info('🔗 Step 6: Merge Subcategories');
+                logger.info('🔗 Step 5: Merge Subcategories');
                 const mergeStep = new MergeStep(this.targetDb);
                 results.merge = await mergeStep.run();
             }
 
-            // Step 7: Update Master Category IDs
+            // Step 6: Update Master Category IDs
             // Fix master_category_id NULL fields after subcategory merge
             if (config.steps.updateMasterCategoryIds.enabled) {
-                logger.info('📂 Step 7: Update Master Category IDs');
+                logger.info('📂 Step 6: Update Master Category IDs');
                 const updateMasterCategoryIdsStep = new UpdateMasterCategoryIdsStep(this.targetDb, this.context.defaultLanguageId);
                 results.updateMasterCategoryIds = await updateMasterCategoryIdsStep.run();
             }
 
-            // Step 8: Customers
+            // Step 7: Customers
             // Migrate customers and addresses with tree structure relationships
             if (config.steps.customers.enabled) {
-                logger.info('👥 Step 8: Customers');
+                logger.info('👥 Step 7: Customers');
                 const customersStep = new CustomersStep(
                     this.sourceDb,
                     this.targetDb,
@@ -143,10 +133,10 @@ class MigrationV3 {
                 results.customers = await customersStep.run();
             }
 
-            // Step 9: Orders
+            // Step 8: Orders
             // Migrate orders + order items + shipping/billing addresses in tree structure
             if (config.steps.orders.enabled) {
-                logger.info('📋 Step 9: Orders');
+                logger.info('📋 Step 8: Orders');
                 const ordersStep = new OrdersStep(
                     this.sourceDb,
                     this.targetDb,
@@ -227,6 +217,10 @@ class MigrationV3 {
                 case 'productMasterImagesUpdate':
                     const productMasterImagesUpdateStep = new ProductMasterImagesUpdateStep(this.sourceDb, this.targetDb, config);
                     return await productMasterImagesUpdateStep.run();
+
+                case 'combinedImageProcessing':
+                    const combinedImageProcessingStep = new CombinedImageProcessingStep(this.sourceDb, this.targetDb, config);
+                    return await combinedImageProcessingStep.run();
 
                 case 'merge':
                     const mergeStep = new MergeStep(this.targetDb);

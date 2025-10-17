@@ -48,15 +48,9 @@ const config = {
             batchSize: 1000,
             parallelLimit: 1
         },
-        updateImagePaths: {
+        combinedImageProcessing: {
             enabled: true,
-            description: 'Update product image paths with backend URL prefix',
-            batchSize: 500,
-            parallelLimit: 1
-        },
-        productMasterImagesUpdate: {
-            enabled: true,
-            description: 'Update product master image IDs and is_master flags',
+            description: 'Update image paths and set master images in one step',
             batchSize: 500,
             parallelLimit: 1
         },

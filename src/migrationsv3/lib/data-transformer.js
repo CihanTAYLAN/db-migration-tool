@@ -172,7 +172,10 @@ class DataTransformer {
         }
 
         // Map certification_type to certificate_provider_id with caching
+        // If no certification_type but has certification_number, default to PCGS
         let certificateProviderId = null;
+
+        // First, try certification_type mapping
         if (sourceProduct.certification_type) {
             const certType = String(sourceProduct.certification_type).trim();
 
@@ -188,11 +191,30 @@ class DataTransformer {
                 const providerName = typeToNameMap[certType];
                 if (providerName) {
                     certificateProviderId = await this.resolveCertificateProvider(providerName);
-                    logger.debug(`Resolved certificate provider for certType ${certType} (${providerName}): ${certificateProviderId}`);
+                    logger.debug(`Resolved certificate provider for certType ${certType} (${providerName}): ${certificateProviderId} for product ${sourceProduct.product_sku}`);
+                } else {
+                    // Unknown certification_type: use Uncertified instead of default
+                    certificateProviderId = await this.resolveCertificateProvider('Uncertified');
+                    logger.debug(`Unknown certification_type ${certType}, applied Uncertified for product ${sourceProduct.product_sku}: ${certificateProviderId}`);
                 }
             } catch (error) {
-                logger.warning(`Failed to resolve certificate provider for type ${certType}`, { error: error.message });
+                logger.warning(`Failed to resolve certificate provider for type ${certType}`, { error: error.message, product: sourceProduct.product_sku });
             }
+        }
+
+        // Fallback: If no certification_type but has certification_number, use Uncertified
+        // (having a certification number but unknown provider)
+        if (!certificateProviderId && sourceProduct.certification_number && sourceProduct.certification_number.trim()) {
+            try {
+                certificateProviderId = await this.resolveCertificateProvider('Uncertified');
+                logger.debug(`Applied Uncertified for certification_number ${sourceProduct.certification_number}: ${certificateProviderId} for product ${sourceProduct.product_sku}`);
+            } catch (error) {
+                logger.warning(`Failed to apply Uncertified for certification_number ${sourceProduct.certification_number}`, { error: error.message, product: sourceProduct.product_sku });
+            }
+        }
+
+        if (!certificateProviderId) {
+            logger.debug(`No certificate provider set for product ${sourceProduct.product_sku} (cert_type: ${sourceProduct.certification_type}, cert_num: ${sourceProduct.certification_number})`);
         }
 
         // Parse grade from meta_title if EAV fields are empty
@@ -231,14 +253,24 @@ class DataTransformer {
             year_date: this.parseValidYearDate(sourceProduct.year, sourceProduct.sort_string, sourceProduct.name),
             is_second_hand: false,
             is_consignment: false,
-            is_active: true,
+            // Determine is_active from source status and visibility attributes - MAGENTO RULES:
+            // status=1 (Enabled) AND visibility=2 (Catalog) OR 4 (Catalog, Search) = ACTIVE
+            // status=2 (Disabled) OR visibility=1 (Not Visible Individually) = INACTIVE
+            is_active: (
+                sourceProduct.status !== null &&
+                sourceProduct.status !== undefined &&
+                String(sourceProduct.status) === '1' &&
+                sourceProduct.visibility !== null &&
+                sourceProduct.visibility !== undefined &&
+                (String(sourceProduct.visibility) === '2' || String(sourceProduct.visibility) === '4')
+            ),
             is_on_hold: false,
             status: this.determineProductStatus(sourceProduct),
             quantity: 1,
             price: parseFloat(sourceProduct.price) || 0,
             sold_date: sourceProduct.eav_sold_date || sourceProduct.sold_date || null,
             archived_at: this.calculateArchivedAt(sourceProduct),
-            sold_price: sourceProduct.eav_sold_price || sourceProduct.last_sold_price || null,
+            sold_price: souyoduct.eav_sold_price || sourceProduct.last_sold_price || null,
             discount_price: null,
             ebay_offer_code: null,
             stars: 0,
@@ -248,7 +280,7 @@ class DataTransformer {
             product_master_image_id: null,
             certificate_provider_id: certificateProviderId,
             master_category_id: null, // Will be set later
-            xero_tenant_id: null,
+            xero_account_id: null,
             country_id: countryId
         };
     }
