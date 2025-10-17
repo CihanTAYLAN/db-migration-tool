@@ -270,7 +270,7 @@ class DataTransformer {
             price: parseFloat(sourceProduct.price) || 0,
             sold_date: sourceProduct.eav_sold_date || sourceProduct.sold_date || null,
             archived_at: this.calculateArchivedAt(sourceProduct),
-            sold_price: souyoduct.eav_sold_price || sourceProduct.last_sold_price || null,
+            sold_price: sourceProduct.eav_sold_price || sourceProduct.last_sold_price || null,
             discount_price: null,
             ebay_offer_code: null,
             stars: 0,
