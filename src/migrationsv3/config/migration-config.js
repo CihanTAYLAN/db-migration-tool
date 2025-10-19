@@ -24,6 +24,12 @@ const config = {
             enabled: true,
             description: 'EAV attribute IDs and language setup'
         },
+        blog_posts: {
+            enabled: true,
+            description: 'Blog posts migration with translations and content',
+            batchSize: 50,
+            parallelLimit: 1
+        },
         categories: {
             enabled: true,
             description: 'Category migration with translations',

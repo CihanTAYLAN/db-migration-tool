@@ -10,6 +10,7 @@ const config = require('./config/migration-config');
 
 // Import steps
 const PrepareStep = require('./steps/prepare');
+const BlogPostsStep = require('./steps/blog-posts');
 const CategoriesStep = require('./steps/categories');
 const ProductsStep = require('./steps/products');
 const MergeStep = require('./steps/merge-subcategories');
@@ -67,10 +68,23 @@ class MigrationV3 {
                 this.context.defaultLanguageId = results.prepare.defaultLanguageId;
             }
 
-            // Step 2: Categories
+            // Step 2: Blog Posts
+            // Migrate blog posts from Mageplaza Blog module
+            if (config.steps.blog_posts.enabled) {
+                logger.info('📝 Step 2: Blog Posts');
+                const blogPostsStep = new BlogPostsStep(
+                    this.sourceDb,
+                    this.targetDb,
+                    config,
+                    this.context.defaultLanguageId
+                );
+                results.blog_posts = await blogPostsStep.run();
+            }
+
+            // Step 3: Categories
             // Migrate all categories from catalog_category_flat_store_1
             if (config.steps.categories.enabled) {
-                logger.info('📂 Step 2: Categories');
+                logger.info('📂 Step 3: Categories');
                 const categoriesStep = new CategoriesStep(
                     this.sourceDb,
                     this.targetDb,
@@ -81,10 +95,10 @@ class MigrationV3 {
                 results.categories = await categoriesStep.run();
             }
 
-            // Step 3: Products
+            // Step 4: Products
             // Migrate products + translations + prices + images + certificate badges + master_category_id update
             if (config.steps.products.enabled) {
-                logger.info('📦 Step 3: Products');
+                logger.info('📦 Step 4: Products');
                 const productsStep = new ProductsStep(
                     this.sourceDb,
                     this.targetDb,
@@ -119,10 +133,10 @@ class MigrationV3 {
                 results.updateMasterCategoryIds = await updateMasterCategoryIdsStep.run();
             }
 
-            // Step 7: Customers
+            // Step 8: Customers
             // Migrate customers and addresses with tree structure relationships
             if (config.steps.customers.enabled) {
-                logger.info('👥 Step 7: Customers');
+                logger.info('👥 Step 8: Customers');
                 const customersStep = new CustomersStep(
                     this.sourceDb,
                     this.targetDb,
@@ -189,6 +203,15 @@ class MigrationV3 {
                 case 'prepare':
                     const prepareStep = new PrepareStep(this.sourceDb, this.targetDb, config);
                     return await prepareStep.run();
+
+                case 'blog_posts':
+                    const blogPostsStep = new BlogPostsStep(
+                        this.sourceDb,
+                        this.targetDb,
+                        config,
+                        this.context.defaultLanguageId
+                    );
+                    return await blogPostsStep.run();
 
                 case 'categories':
                     const categoriesStep = new CategoriesStep(

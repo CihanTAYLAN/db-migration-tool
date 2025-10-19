@@ -279,7 +279,7 @@ program
 
 program
     .command('migrate:v3:step <stepName>')
-    .description('Run specific Migration V3 step (prepare, categories, products, merge, customers, orders)')
+    .description('Run specific Migration V3 step (prepare, blog_posts, categories, products, merge, customers, orders)')
     .action(async (stepName) => {
         try {
             logger.info(`Running Migration V3 step: ${stepName}`);
@@ -294,110 +294,6 @@ program
             logger.success(`Migration V3 step ${stepName} completed successfully`);
         } catch (error) {
             logger.error(`Migration V3 step ${stepName} failed`, { error: error.message });
-            process.exit(1);
-        }
-    });
-
-program
-    .command('migrate:v3:prepare')
-    .description('Run Migration V3 prepare step only')
-    .action(async () => {
-        try {
-            logger.info('Running Migration V3 prepare step...');
-            const MigrationV3 = require('../migrationsv3');
-            const migrationInstance = new MigrationV3(
-                process.env.SOURCE_DATABASE_URL,
-                process.env.SOURCE_DB_TYPE,
-                process.env.TARGET_DATABASE_URL,
-                process.env.TARGET_DB_TYPE
-            );
-            await migrationInstance.runStep('prepare');
-            logger.success('Migration V3 prepare step completed successfully');
-        } catch (error) {
-            logger.error('Migration V3 prepare step failed', { error: error.message });
-            process.exit(1);
-        }
-    });
-
-program
-    .command('migrate:v3:categories')
-    .description('Run Migration V3 categories step only')
-    .action(async () => {
-        try {
-            logger.info('Running Migration V3 categories step...');
-            const MigrationV3 = require('../migrationsv3');
-            const migrationInstance = new MigrationV3(
-                process.env.SOURCE_DATABASE_URL,
-                process.env.SOURCE_DB_TYPE,
-                process.env.TARGET_DATABASE_URL,
-                process.env.TARGET_DB_TYPE
-            );
-            await migrationInstance.runStep('categories');
-            logger.success('Migration V3 categories step completed successfully');
-        } catch (error) {
-            logger.error('Migration V3 categories step failed', { error: error.message });
-            process.exit(1);
-        }
-    });
-
-program
-    .command('migrate:v3:products')
-    .description('Run Migration V3 products step only')
-    .action(async () => {
-        try {
-            logger.info('Running Migration V3 products step...');
-            const MigrationV3 = require('../migrationsv3');
-            const migrationInstance = new MigrationV3(
-                process.env.SOURCE_DATABASE_URL,
-                process.env.SOURCE_DB_TYPE,
-                process.env.TARGET_DATABASE_URL,
-                process.env.TARGET_DB_TYPE
-            );
-            await migrationInstance.runStep('products');
-            logger.success('Migration V3 products step completed successfully');
-        } catch (error) {
-            logger.error('Migration V3 products step failed', { error: error.message });
-            process.exit(1);
-        }
-    });
-
-program
-    .command('migrate:v3:customers')
-    .description('Run Migration V3 customers step only')
-    .action(async () => {
-        try {
-            logger.info('Running Migration V3 customers step...');
-            const MigrationV3 = require('../migrationsv3');
-            const migrationInstance = new MigrationV3(
-                process.env.SOURCE_DATABASE_URL,
-                process.env.SOURCE_DB_TYPE,
-                process.env.TARGET_DATABASE_URL,
-                process.env.TARGET_DB_TYPE
-            );
-            await migrationInstance.runStep('customers');
-            logger.success('Migration V3 customers step completed successfully');
-        } catch (error) {
-            logger.error('Migration V3 customers step failed', { error: error.message });
-            process.exit(1);
-        }
-    });
-program
-    .command('migrate:v3:orders')
-    .description('Run Migration V3 orders step only')
-    .action(async () => {
-        try {
-            logger.info('Running Migration V3 orders step...');
-            const MigrationV3 = require('../migrationsv3');
-            const migrationInstance = new MigrationV3(
-                process.env.SOURCE_DATABASE_URL,
-                process.env.SOURCE_DB_TYPE,
-                process.env.TARGET_DATABASE_URL,
-                process.env.TARGET_DB_TYPE
-            );
-            await migrationInstance.runStep('orders');
-            logger.success('Migration V3 orders step completed successfully');
-        } catch (error) {
-            logger.error('Migration V3 orders step failed', { error: error.message });
             process.exit(1);
         }
     });
