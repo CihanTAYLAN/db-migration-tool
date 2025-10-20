@@ -307,7 +307,7 @@ class ProductsStep {
             // 5. Note: Product images are now migrated in the separate combined image processing step
 
             // 6. Migrate product certificate provider badges
-            await this.migrateProductCertificateProviderBadges(products);
+            // await this.migrateProductCertificateProviderBadges(products);
 
             // 7. Update master category IDs for all products
             await this.updateMasterCategoryIds(products);
