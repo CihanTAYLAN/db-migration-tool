@@ -150,7 +150,7 @@ class BlogPostsStep {
       const content = {
         id: contentId,
         sort: post.post_id, // Use post_id as sort for consistency
-        image: post.image ? backendUrlPrefix + post.image.replace('mageplaza/blog/post/', '') : null,
+        image: (post.image ? backendUrlPrefix + post.image : null).replace('mageplaza/blog/post/', ''),
         type: 'news', // Fixed type for blog posts
         created_at: parseDate(post.created_at),
         updated_at: parseDate(post.updated_at),
