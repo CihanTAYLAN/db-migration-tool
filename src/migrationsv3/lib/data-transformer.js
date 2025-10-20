@@ -19,7 +19,7 @@ class DataTransformer {
             10: 3.5, 8: 3, 6: 2.5, 4: 2, 3: 1.5, 2: 1.5, 1: 1
         };
 
-        // Country mapping from source to target
+        // Country mapping from source to target - expanded from countries-data.json
         this.countryMapping = {
             'Australia': 'AU',
             'Great Britain': 'GB',
@@ -35,7 +35,30 @@ class DataTransformer {
             'Netherlands': 'NL',
             'New Zealand': 'NZ',
             'Isle of Man': 'IM',
-            'Saudi Arabia': 'SA'
+            'Saudi Arabia': 'SA',
+            // Additional countries from source data
+            'Switzerland': 'CH',
+            'France': 'FR',
+            'Austria': 'AT',
+            'Bahamas': 'BS',
+            'Liechtenstein': 'LI',
+            'Peru': 'PE',
+            'China': 'CN',
+            'Panama': 'PA',
+            'Iran': 'IR',
+            'Albania': 'AL',
+            'Belgium': 'BE',
+            'Yugoslavia': 'YU',
+            'Russia': 'RU',
+            'Tristan da Cunha': 'TA',
+            'European Union': 'EU',
+            'Cameroon': 'CM',
+            'Free City of Danzig': 'XZ',
+            'Niue': 'NU',
+            'Bolivia': 'BO',
+            'Italy': 'IT',
+            'Spain': 'ES',
+            'Rhodesia': 'RH',
         };
 
         // Cache for certificate provider lookups (providerName -> providerId)
@@ -148,27 +171,55 @@ class DataTransformer {
         const timestamp = Math.floor(new Date(sourceProduct.created_at) / 1000);
         const productWebSku = sourceProduct.product_sku + '-' + timestamp.toString(36);
 
-        // Map country to country_id - try multiple country fields
+        // Map country to country_id - only use country_value
         let countryId = null;
 
-        // Priority: country_of_manufacture > country_value > country
-        const countrySource = sourceProduct.country_of_manufacture ||
-            sourceProduct.country_value ||
-            sourceProduct.country;
+        // If country_value exists, that's the country; otherwise country is null
+        const countrySource = sourceProduct.country_value;
 
         if (countrySource) {
-            // If it's already an ISO code (AU, US, etc.), use it directly
-            if (typeof countrySource === 'string' && countrySource.length === 2) {
-                countryId = countrySource.toUpperCase();
-            } else {
-                // Try to map from country name
-                const isoCode = this.countryMapping[countrySource];
-                if (isoCode) {
-                    countryId = isoCode;
-                }
-            }
+            // Trim whitespace and handle empty/null values
+            const trimmedSource = String(countrySource).trim();
 
-            logger.debug(`Mapped country for product ${sourceProduct.product_sku}: ${countrySource} -> ${countryId}`);
+            // Handle Magento's "None" values as null
+            if (trimmedSource &&
+                trimmedSource !== 'NULL' &&
+                trimmedSource !== 'null' &&
+                trimmedSource !== 'None' &&
+                trimmedSource !== 'none' &&
+                trimmedSource !== '') {
+
+                // If it's already an ISO code (AU, US, etc.), use it directly
+                if (trimmedSource.length === 2) {
+                    countryId = trimmedSource.toUpperCase();
+                } else if (trimmedSource.length === 3) {
+                    // Handle 3-letter ISO codes by looking up in mapping
+                    const isoMapping = {
+                        'AUS': 'AU', 'GBR': 'GB', 'CAN': 'CA', 'USA': 'US',
+                        'DEU': 'DE', 'ZAF': 'ZA', 'MEX': 'MX', 'IND': 'IN',
+                        'NLD': 'NL', 'NZL': 'NZ', 'SAU': 'SA', 'FJI': 'FJ'
+                    };
+                    countryId = isoMapping[trimmedSource];
+                } else {
+                    // Try to map from country name
+                    const isoCode = this.countryMapping[trimmedSource];
+                    if (isoCode) {
+                        countryId = isoCode;
+                    }
+                }
+
+                if (countryId) {
+                    logger.debug(`Mapped country for product ${sourceProduct.product_sku}: "${trimmedSource}" -> "${countryId}"`);
+                } else {
+                    logger.debug(`Failed to map country for product ${sourceProduct.product_sku}: "${trimmedSource}" - no mapping found`);
+                }
+            } else {
+                // "None", "null", empty string treated as no country
+                logger.debug(`Product ${sourceProduct.product_sku} has invalid country_value: "${trimmedSource}" - treated as null`);
+            }
+        } else {
+            // No country_value means country is null
+            logger.debug(`No country_value for product ${sourceProduct.product_sku} - country remains null`);
         }
 
         // Map certification_type to certificate_provider_id with caching

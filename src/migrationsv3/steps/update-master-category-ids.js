@@ -85,7 +85,7 @@ class UpdateMasterCategoryIdsStep {
                     if (productCategoryIds.length === 0) {
                         // No product categories found, use first available category as fallback
                         if (targetCategories.length > 0) {
-                            await this.updateProductMasterCategory(product.id, targetCategories[0].id);
+                            await this.updateProductMasterCategory(product.id, targetCategories.reverse()[0].id);
                         }
                         continue;
                     }
@@ -106,7 +106,7 @@ class UpdateMasterCategoryIdsStep {
                         await this.updateProductMasterCategory(product.id, masterCategoryId);
                     } else if (targetCategories.length > 0) {
                         // Use first category as fallback
-                        await this.updateProductMasterCategory(product.id, targetCategories[0].id);
+                        await this.updateProductMasterCategory(product.id, targetCategories.reverse()[0].id);
                     }
 
                 } catch (error) {
@@ -160,7 +160,7 @@ class UpdateMasterCategoryIdsStep {
         }
 
         // Final fallback: return first category
-        return targetCategories.length > 0 ? targetCategories[0].id : null;
+        return targetCategories.length > 0 ? targetCategories.reverse()[0].id : null;
     }
 
     async updateProductMasterCategory(productId, categoryId) {
