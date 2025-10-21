@@ -309,10 +309,7 @@ class ProductsStep {
             // 6. Migrate product certificate provider badges
             // await this.migrateProductCertificateProviderBadges(products);
 
-            // 7. Update master category IDs for all products
-            await this.updateMasterCategoryIds(products);
-
-            // 7.5. Migrate product images and set master image IDs
+            // 7. Migrate product images and set master image IDs
             await this.migrateProductImages(products);
 
             // 8. Update master image IDs for all products
@@ -1123,103 +1120,6 @@ class ProductsStep {
         }
     }
 
-    async updateMasterCategoryIds(products) {
-        logger.info('Updating master category IDs for products...');
-
-        try {
-            // Get product mappings
-            const productWebSkus = products.map(p => {
-                const timestamp = Math.floor(new Date(p.created_at) / 1000);
-                return p.product_sku + '-' + timestamp.toString(36);
-            });
-
-            const targetProducts = await this.targetDb.query(
-                'SELECT id, product_web_sku FROM products WHERE product_web_sku = ANY($1)',
-                [productWebSkus]
-            );
-
-            const productMap = new Map(targetProducts.map(p => [p.product_web_sku, p.id]));
-            logger.info(`Found ${productMap.size} products in target database`);
-
-            // Get category mappings from target
-            const targetCategories = await this.targetDb.query(`
-                SELECT c.id, c.code, ct.slug
-                FROM categories c
-                LEFT JOIN category_translations ct ON c.id = ct.category_id
-                WHERE ct.language_id = $1
-            `, [this.defaultLanguageId]);
-
-            logger.info(`Found ${targetCategories.length} categories in target database`);
-
-            // Update master category IDs for each product - improved logic
-            let updatedCount = 0;
-            let processedCount = 0;
-            let fallbackCount = 0;
-
-            for (const product of products) {
-                processedCount++;
-                const productWebSku = product.product_sku + '-' + Math.floor(new Date(product.created_at) / 1000).toString(36);
-                const productId = productMap.get(productWebSku);
-
-                if (!productId) {
-                    if (processedCount <= 5) { // Log first 5 missing products
-                        logger.debug(`Product not found in target: ${productWebSku}`);
-                    }
-                    continue;
-                }
-
-                if (!product.category_ids) {
-                    if (processedCount <= 5) { // Log first 5 products without categories
-                        logger.debug(`Product has no category_ids: ${productWebSku}`);
-                    }
-                    continue;
-                }
-
-                // Get all category IDs for this product
-                const sourceCategoryIds = product.category_ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
-
-                if (sourceCategoryIds.length === 0) {
-                    if (processedCount <= 5) { // Log first 5 products with invalid category_ids
-                        logger.debug(`Product has invalid category_ids: ${productWebSku} -> "${product.category_ids}"`);
-                    }
-                    continue;
-                }
-
-                // Find the master category - improved: use first category from product's category_ids consistently
-                let masterCategoryId = null;
-
-                if (sourceCategoryIds.length > 0) {
-                    const firstSourceCategoryId = sourceCategoryIds[0]; // Always use first category_id consistently
-
-                    // Find exact match with first category
-                    masterCategoryId = await this.findMasterCategoryIdForSingle(targetCategories, firstSourceCategoryId);
-                }
-
-                if (!masterCategoryId) {
-                    if (processedCount <= 5) { // Log first 5 products with no master category
-                        logger.debug(`No master category could be determined for product ${productWebSku}`);
-                    }
-                    continue;
-                }
-
-                await this.targetDb.query(
-                    'UPDATE products SET master_category_id = $1, updated_at = NOW() WHERE id = $2',
-                    [masterCategoryId, productId]
-                );
-                updatedCount++;
-
-                if (updatedCount <= 5) { // Log first 5 successful updates
-                    logger.debug(`Updated master_category_id for product ${productWebSku}: ${masterCategoryId}`);
-                }
-            }
-
-            logger.info(`Processed ${processedCount} products, updated ${updatedCount} master category IDs (${fallbackCount} with fallback)`);
-            logger.success(`Updated master category IDs for ${updatedCount} products`);
-        } catch (error) {
-            logger.error('Failed to update master category IDs', { error: error.message });
-        }
-    }
-
     async updateMasterImageIds(products) {
         logger.info('Updating master image IDs for products...');
 
@@ -1289,9 +1189,7 @@ class ProductsStep {
                 );
                 updatedCount++;
 
-                if (updatedCount <= 5) { // Log first 5 successful updates
-                    logger.debug(`Set master_image_id to ${masterImageId} for product ${productWebSku}`);
-                }
+                logger.debug(`Set master_image_id to ${masterImageId} for product ${productWebSku}`);
             }
 
             // Summary log with actions if there are missing images

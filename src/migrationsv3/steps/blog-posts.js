@@ -130,10 +130,10 @@ class BlogPostsStep {
   transformBlogPosts(blogPosts, defaultLanguageId) {
     const contents = [];
     const translations = [];
+    const { v5: uuidv5 } = require('uuid');
+    const blogNamespace = '1b671a64-40d5-491e-99b0-da01ff1f3341'; // Fixed namespace for deterministic IDs
 
     for (const post of blogPosts) {
-      const { v4: uuidv4 } = require('uuid');
-
       // Safe date parsing
       const parseDate = (dateStr) => {
         if (!dateStr || dateStr === '0000-00-00 00:00:00') {
@@ -145,8 +145,8 @@ class BlogPostsStep {
 
       const backendUrlPrefix = 'https://drakesterling-backend.dev.uplide.com/api/ecommerce/file-manager/stream/blog/';
 
-      // Create content entry
-      const contentId = uuidv4();
+      // Create deterministic content ID based on post_id
+      const contentId = uuidv5(post.post_id.toString(), blogNamespace);
       const content = {
         id: contentId,
         sort: post.post_id, // Use post_id as sort for consistency
@@ -162,7 +162,7 @@ class BlogPostsStep {
 
       // Create translation entry
       const translation = {
-        id: uuidv4(),
+        id: uuidv5(`translation-${post.post_id}`, blogNamespace), // Deterministic translation ID
         title: post.name || '',
         slug: this.generateSlug(post.url_key),
         description: post.post_content || '',
@@ -192,6 +192,12 @@ class BlogPostsStep {
       const result = await this.targetDb.query(`
                 INSERT INTO contents (id, sort, image, type, created_at, updated_at, published, is_allowed)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (id) DO UPDATE SET
+                    sort = EXCLUDED.sort,
+                    image = EXCLUDED.image,
+                    updated_at = EXCLUDED.updated_at,
+                    published = EXCLUDED.published,
+                    is_allowed = EXCLUDED.is_allowed
                 RETURNING id
             `, [
         content.id,
