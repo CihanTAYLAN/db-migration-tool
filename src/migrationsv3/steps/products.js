@@ -20,6 +20,7 @@ class ProductsStep {
         // Cache for repeated lookups (performance optimization)
         this.countryCache = new Map(); // isoCode -> countryId
         this.categoryCache = new Map(); // sourceEntityId -> targetCategoryId
+        this.xeroAccountCache = new Map(); // saleAccount -> { accountId, tenantId }
 
         this.batchProcessor = new BatchProcessor({
             batchSize: config.steps.products.batchSize,
@@ -380,7 +381,8 @@ class ProductsStep {
                 cpev_sort.value as sort_string,
                 cpei_status.value as status,
                 cpei_visibility.value as visibility,
-                GROUP_CONCAT(DISTINCT ccp.category_id) as category_ids
+                GROUP_CONCAT(DISTINCT ccp.category_id) as category_ids,
+                cpet_xero_sale.value as xero_sale_account
             FROM catalog_product_entity cpe
             LEFT JOIN catalog_product_flat_1 cpf ON cpe.entity_id = cpf.entity_id
             LEFT JOIN catalog_product_entity_varchar cpevs_name ON cpe.entity_id = cpevs_name.entity_id AND cpevs_name.attribute_id = 73 AND cpevs_name.store_id = 0
@@ -401,6 +403,7 @@ class ProductsStep {
             LEFT JOIN catalog_product_entity_datetime cped_sold_on ON cpe.entity_id = cped_sold_on.entity_id AND cped_sold_on.attribute_id = (SELECT attribute_id FROM eav_attribute WHERE attribute_code = 'sold_on' AND entity_type_id = 4) AND cped_sold_on.store_id = 0
             LEFT JOIN catalog_product_entity_decimal cped_sold_price ON cpe.entity_id = cped_sold_price.entity_id AND cped_sold_price.attribute_id = (SELECT attribute_id FROM eav_attribute WHERE attribute_code = 'sold_price' AND entity_type_id = 4) AND cped_sold_price.store_id = 0
             LEFT JOIN catalog_product_entity_varchar cpev_sort ON cpe.entity_id = cpev_sort.entity_id AND cpev_sort.attribute_id = 141 AND cpev_sort.store_id = 0
+            LEFT JOIN catalog_product_entity_text cpet_xero_sale ON cpe.entity_id = cpet_xero_sale.entity_id AND cpet_xero_sale.attribute_id = 188 AND cpet_xero_sale.store_id = 0
             INNER JOIN catalog_category_product ccp ON cpe.entity_id = ccp.product_id
             LEFT JOIN (
                 SELECT
@@ -424,7 +427,7 @@ class ProductsStep {
             GROUP BY cpe.entity_id, cpe.sku, cpevs_name.value, cped.value, cpf.name, cpf.price, cpf.description, cpf.short_description,
                      cpf.image, cpf.url_key, cpe.created_at, cpe.updated_at, cpevs_meta_title.value,
                      cpevs_meta_desc.value, cpet_cert.value, cpet_coin.value, cpet_desc.value, cpevs_country_manuf.value, cpevs_grade_prefix.value,
-                     cped_grade_value.value, cpevs_grade_suffix.value, cpf.year, cpf.country, cpf.country_value, cpei_cert_type.value, sold_dates.first_sale_date, sold_prices.last_sold_price, cpev_sort.value, cped_sold_on.value, cped_sold_price.value, cpei_status.value, cpei_visibility.value
+                     cped_grade_value.value, cpevs_grade_suffix.value, cpf.year, cpf.country, cpf.country_value, cpei_cert_type.value, sold_dates.first_sale_date, sold_prices.last_sold_price, cpev_sort.value, cped_sold_on.value, cped_sold_price.value, cpei_status.value, cpei_visibility.value, cpet_xero_sale.value
             ORDER BY cpe.entity_id
         `;
 
@@ -493,6 +496,11 @@ class ProductsStep {
                 await this.resolveCountryIds(transformed.products);
             }
 
+            // Resolve Xero account IDs from source sale_account values
+            if (transformed.products.length > 0) {
+                await this.resolveXeroAccountIds(products, transformed.products);
+            }
+
             // Insert products only (translations will be inserted separately)
             if (transformed.products.length > 0) {
                 await this.insertProducts(transformed.products);
@@ -530,6 +538,33 @@ class ProductsStep {
         }
 
         logger.info(`Used country cache for batch: ${products.length} products processed`);
+    }
+
+    async resolveXeroAccountIds(sourceProducts, transformedProducts) {
+        // Process each product and resolve its Xero account mapping
+        let mappedCount = 0;
+        let skippedCount = 0;
+
+        for (let i = 0; i < sourceProducts.length; i++) {
+            const sourceProduct = sourceProducts[i];
+            const transformedProduct = transformedProducts[i];
+
+            const xeroSaleAccount = sourceProduct.xero_sale_account;
+            const xeroMapping = await this.resolveXeroAccountId(xeroSaleAccount);
+
+            transformedProduct.xero_account_id = xeroMapping.accountId;
+            transformedProduct.xero_tenant_id = xeroMapping.tenantId;
+
+            if (xeroMapping.accountId && xeroMapping.tenantId) {
+                mappedCount++;
+                logger.debug(`Mapped product ${sourceProduct.product_sku} Xero account: ${xeroSaleAccount} -> account_id: ${xeroMapping.accountId}, tenant_id: ${xeroMapping.tenantId}`);
+            } else {
+                skippedCount++;
+                logger.debug(`No Xero mapping found for product ${sourceProduct.product_sku} (sale_account: ${xeroSaleAccount})`);
+            }
+        }
+
+        logger.info(`Xero account mapping completed: ${mappedCount} products mapped, ${skippedCount} products without mapping`);
     }
 
     async insertProducts(products) {
@@ -1266,6 +1301,51 @@ class ProductsStep {
         }
 
         return null;
+    }
+
+    // Resolve Xero account codes to target database IDs with caching
+    async resolveXeroAccountId(saleAccount) {
+        try {
+            if (!saleAccount || typeof saleAccount !== 'string' || saleAccount.trim() === '') {
+                logger.debug('Invalid or empty Xero sale account, skipping');
+                return { accountId: null, tenantId: null };
+            }
+
+            const accountCode = saleAccount.trim();
+
+            // Check cache first for performance
+            if (this.xeroAccountCache.has(accountCode)) {
+                return this.xeroAccountCache.get(accountCode);
+            }
+
+            // Query target database for Xero account mapping
+            const result = await this.targetDb.query(
+                'SELECT id, tenant_id FROM xero_accounts WHERE account_number = $1',
+                [accountCode]
+            );
+
+            if (result.length > 0) {
+                const mapped = {
+                    accountId: result[0].id,
+                    tenantId: result[0].tenant_id
+                };
+
+                // Cache for future use
+                this.xeroAccountCache.set(accountCode, mapped);
+                logger.debug(`Mapped Xero account ${accountCode} to ID: ${mapped.accountId}, tenant: ${mapped.tenantId}`);
+
+                return mapped;
+            } else {
+                logger.warn(`Xero account ${accountCode} not found in target database`);
+                // Cache null result to avoid repeated queries
+                this.xeroAccountCache.set(accountCode, { accountId: null, tenantId: null });
+                return { accountId: null, tenantId: null };
+            }
+
+        } catch (error) {
+            logger.error(`Failed to resolve Xero account ${saleAccount}`, { error: error.message });
+            return { accountId: null, tenantId: null };
+        }
     }
 }
 

@@ -332,6 +332,7 @@ class DataTransformer {
             certificate_provider_id: certificateProviderId,
             master_category_id: null, // Will be set later
             xero_account_id: null,
+            xero_tenant_id: null,
             country_id: countryId
         };
     }
