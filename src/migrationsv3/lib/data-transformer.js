@@ -171,11 +171,11 @@ class DataTransformer {
         const timestamp = Math.floor(new Date(sourceProduct.created_at) / 1000);
         const productWebSku = sourceProduct.product_sku + '-' + timestamp.toString(36);
 
-        // Map country to country_id - only use country_value
+        // Map country to country_id - use country_value first, then country_of_manufacture as fallback
         let countryId = null;
 
-        // If country_value exists, that's the country; otherwise country is null
-        const countrySource = sourceProduct.country_value;
+        // Prefer country_value if available, otherwise use country_of_manufacture
+        const countrySource = sourceProduct.country_value || sourceProduct.country_of_manufacture;
 
         if (countrySource) {
             // Trim whitespace and handle empty/null values
