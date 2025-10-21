@@ -1271,11 +1271,6 @@
       "iso3": "NLD"
     },
     {
-      "name": "Cocos (Keeling) Islands",
-      "iso2": "CO",
-      "iso3": "CCK"
-    },
-    {
       "name": "Tristan da Cunha",
       "iso2": "TR",
       "iso3": "TAA"
@@ -1284,11 +1279,6 @@
       "name": "Rhodesia",
       "iso2": "RH",
       "iso3": "RHO"
-    },
-    {
-      "name": "Free City of Danzig",
-      "iso2": "FR",
-      "iso3": "XZZ"
     }
   ]
 }

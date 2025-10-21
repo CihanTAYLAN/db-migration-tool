@@ -59,6 +59,7 @@ class DataTransformer {
             'Italy': 'IT',
             'Spain': 'ES',
             'Rhodesia': 'RH',
+            'Cocos (Keeling) Islands': 'CC',
         };
 
         // Cache for certificate provider lookups (providerName -> providerId)
