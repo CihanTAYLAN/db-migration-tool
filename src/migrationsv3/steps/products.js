@@ -319,10 +319,10 @@ class ProductsStep {
             await this.updateMasterImageIds(products);
 
             // 9. Ensure Xero tenants exist
-            await this.ensureXeroTenants();
+            // await this.ensureXeroTenants();
 
             // 10. Set Xero account IDs for products (based on categories or default)
-            await this.updateXeroAccountIds(products);
+            // await this.updateXeroAccountIds(products);
 
             logger.success(`Products migration completed: ${result.success} success, ${result.failed} failed`);
 
@@ -565,40 +565,6 @@ class ProductsStep {
         `;
 
         await this.targetDb.query(query, values);
-    }
-
-    async insertProductTranslations(translations) {
-        // Process translations individually to handle upserts properly
-        for (const translation of translations) {
-            const existing = await this.targetDb.query(
-                'SELECT id FROM product_translations WHERE product_id = $1 AND language_id = $2',
-                [translation.product_id, translation.language_id]
-            );
-
-            if (existing.length > 0) {
-                // Update existing
-                await this.targetDb.query(`
-                    UPDATE product_translations SET
-                        title = $1, description = $2, short_description = $3,
-                        slug = $4, meta_title = $5, meta_description = $6,
-                        meta_keywords = $7, updated_at = NOW()
-                    WHERE id = $8
-                `, [
-                    translation.title, translation.description, translation.short_description,
-                    translation.slug, translation.meta_title, translation.meta_description,
-                    translation.meta_keywords, existing[0].id
-                ]);
-            } else {
-                // Insert new
-                await this.targetDb.query(`
-                    INSERT INTO product_translations (
-                        id, title, description, short_description, slug,
-                        meta_title, meta_description, meta_keywords,
-                        product_id, language_id, created_at, updated_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                `, Object.values(translation));
-            }
-        }
     }
 
     async createProductCategoryRelations(products) {
@@ -1227,17 +1193,6 @@ class ProductsStep {
 
                     // Find exact match with first category
                     masterCategoryId = await this.findMasterCategoryIdForSingle(targetCategories, firstSourceCategoryId);
-
-                    if (!masterCategoryId) {
-                        // Fallback only if absolutely no match found - use the first category in list
-                        if (targetCategories.length > 0) {
-                            masterCategoryId = targetCategories[0].id;
-                            fallbackCount++;
-                            if (fallbackCount <= 5) {
-                                logger.warn(`No category match found for source category ${firstSourceCategoryId}, falling back to ${targetCategories[0].code} for product ${productWebSku}`);
-                            }
-                        }
-                    }
                 }
 
                 if (!masterCategoryId) {

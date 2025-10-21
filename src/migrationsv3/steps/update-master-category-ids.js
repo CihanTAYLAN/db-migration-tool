@@ -45,7 +45,7 @@ class UpdateMasterCategoryIdsStep {
                 SELECT c.id, c.code, ct.slug
                 FROM categories c
                 LEFT JOIN category_translations ct ON c.id = ct.category_id
-                WHERE ct.language_id = $1
+                WHERE ct.language_id = $1 order by ct.created_at asc
             `, [this.defaultLanguageId]);
 
             logger.info(`Using ${targetCategories.length} categories for mapping`);
@@ -83,10 +83,8 @@ class UpdateMasterCategoryIdsStep {
                     );
 
                     if (productCategoryIds.length === 0) {
-                        // No product categories found, use first available category as fallback
-                        if (targetCategories.length > 0) {
-                            await this.updateProductMasterCategory(product.id, targetCategories.reverse()[0].id);
-                        }
+                        // No product categories found, skip
+                        logger.warn('No product categories found for product:', product.id, product.product_sku);
                         continue;
                     }
 
@@ -101,13 +99,7 @@ class UpdateMasterCategoryIdsStep {
 
                     // Find the best matching category using code patterns
                     const masterCategoryId = await this.findBestCategoryMatch(fullCategories, targetCategories);
-
-                    if (masterCategoryId) {
-                        await this.updateProductMasterCategory(product.id, masterCategoryId);
-                    } else if (targetCategories.length > 0) {
-                        // Use first category as fallback
-                        await this.updateProductMasterCategory(product.id, targetCategories.reverse()[0].id);
-                    }
+                    await this.updateProductMasterCategory(product.id, masterCategoryId);
 
                 } catch (error) {
                     logger.debug(`Error updating master_category_id for product ${product.product_identity}: ${error.message}`);
@@ -124,6 +116,8 @@ class UpdateMasterCategoryIdsStep {
 
     async findBestCategoryMatch(productCategories, targetCategories) {
         // Try exact entity ID matches first from category codes
+        productCategories = productCategories.reverse();
+        targetCategories = targetCategories.reverse();
         for (const prodCat of productCategories) {
             // Extract entity ID from code (e.g., "decimal-coins_29" -> 29)
             let prodEntityId = null;
@@ -159,8 +153,7 @@ class UpdateMasterCategoryIdsStep {
             }
         }
 
-        // Final fallback: return first category
-        return targetCategories.length > 0 ? targetCategories.reverse()[0].id : null;
+        return null;
     }
 
     async updateProductMasterCategory(productId, categoryId) {

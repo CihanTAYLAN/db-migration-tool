@@ -225,6 +225,12 @@ class SubcategoryMergerV3 {
 
         logger.info(`Main category: ${mainCategory.title} (${mainCategory.code}) - keeping as active`);
 
+        // Ürünleri ana kategoriye taşı (kategori silinmeden önce!)
+        for (const categoryToMerge of categoriesToMerge) {
+            await this.moveProductsToMainCategory(categoryToMerge.category_id, mainCategory.category_id);
+            logger.info(`Moved products from ${categoryToMerge.title} to ${mainCategory.title}`);
+        }
+
         // Diğer versiyonları sil
         for (const categoryToMerge of categoriesToMerge) {
             await this.deleteMainCategory(categoryToMerge.category_id, categoryToMerge.title, categoryToMerge.code);
