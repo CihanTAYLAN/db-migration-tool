@@ -572,14 +572,32 @@ class OrdersStep {
 
     mapOrderStatus(magentoStatus, magentoState) {
         // Map Magento status/state to target status
+
+
+        // Source statuses;
+        // a_complete,~3852
+        // canceled,~445
+        // pending,~65
+        // paid_to_ship_later,~50
+        // complete,~36
+        // closed,~8
+
+
+        // Target statuses;
+        // PENDING
+        // PROCESSING
+        // ON_HOLD
+        // SHIPPED
+        // CANCELED
+        // COMPLETE
+
         const statusMap = {
-            'pending': 'PENDING',
-            'processing': 'PROCESSING',
-            'complete': 'COMPLETE',
-            'closed': 'COMPLETE',
+            'a_complete': 'COMPLETE',
             'canceled': 'CANCELED',
-            'holded': 'ON_HOLD',
-            'payment_review': 'PENDING'
+            'pending': 'PENDING',
+            'paid_to_ship_later': 'ON_HOLD',
+            'complete': 'COMPLETE',
+            'closed': 'CANCELED',
         };
 
         return statusMap[magentoStatus] || statusMap[magentoState] || 'PENDING';

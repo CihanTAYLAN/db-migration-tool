@@ -372,6 +372,7 @@ class ProductsStep {
                 cpf.country,
                 cpf.country_value,
                 cpevs_country_manuf.value as country_of_manufacture,
+                eaov_country.value as country_int,
                 cpei_cert_type.value as certification_type,
                 cpei_archived.value as archived_status,
                 sold_dates.first_sale_date as sold_date,
@@ -403,6 +404,8 @@ class ProductsStep {
             LEFT JOIN catalog_product_entity_datetime cped_sold_on ON cpe.entity_id = cped_sold_on.entity_id AND cped_sold_on.attribute_id = (SELECT attribute_id FROM eav_attribute WHERE attribute_code = 'sold_on' AND entity_type_id = 4) AND cped_sold_on.store_id = 0
             LEFT JOIN catalog_product_entity_decimal cped_sold_price ON cpe.entity_id = cped_sold_price.entity_id AND cped_sold_price.attribute_id = (SELECT attribute_id FROM eav_attribute WHERE attribute_code = 'sold_price' AND entity_type_id = 4) AND cped_sold_price.store_id = 0
             LEFT JOIN catalog_product_entity_varchar cpev_sort ON cpe.entity_id = cpev_sort.entity_id AND cpev_sort.attribute_id = 141 AND cpev_sort.store_id = 0
+            LEFT JOIN catalog_product_entity_int cpei_country ON cpe.entity_id = cpei_country.entity_id AND cpei_country.attribute_id = 158 AND cpei_country.store_id = 0
+            LEFT JOIN eav_attribute_option_value eaov_country ON cpei_country.value = eaov_country.option_id AND eaov_country.store_id = 0
             LEFT JOIN catalog_product_entity_text cpet_xero_sale ON cpe.entity_id = cpet_xero_sale.entity_id AND cpet_xero_sale.attribute_id = 188 AND cpet_xero_sale.store_id = 0
             INNER JOIN catalog_category_product ccp ON cpe.entity_id = ccp.product_id
             LEFT JOIN (
@@ -427,7 +430,7 @@ class ProductsStep {
             GROUP BY cpe.entity_id, cpe.sku, cpevs_name.value, cped.value, cpf.name, cpf.price, cpf.description, cpf.short_description,
                      cpf.image, cpf.url_key, cpe.created_at, cpe.updated_at, cpevs_meta_title.value,
                      cpevs_meta_desc.value, cpet_cert.value, cpet_coin.value, cpet_desc.value, cpevs_country_manuf.value, cpevs_grade_prefix.value,
-                     cped_grade_value.value, cpevs_grade_suffix.value, cpf.year, cpf.country, cpf.country_value, cpei_cert_type.value, sold_dates.first_sale_date, sold_prices.last_sold_price, cpev_sort.value, cped_sold_on.value, cped_sold_price.value, cpei_status.value, cpei_visibility.value, cpet_xero_sale.value
+                     cped_grade_value.value, cpevs_grade_suffix.value, cpf.year, cpf.country, cpf.country_value, eaov_country.value, cpei_cert_type.value, sold_dates.first_sale_date, sold_prices.last_sold_price, cpev_sort.value, cped_sold_on.value, cped_sold_price.value, cpei_status.value, cpei_visibility.value, cpet_xero_sale.value
             ORDER BY cpe.entity_id
         `;
 

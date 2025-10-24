@@ -172,11 +172,11 @@ class DataTransformer {
         const timestamp = Math.floor(new Date(sourceProduct.created_at) / 1000);
         const productWebSku = sourceProduct.product_sku + '-' + timestamp.toString(36);
 
-        // Map country to country_id - use country_value first, then country_of_manufacture as fallback
+        // Map country to country_id - use country_int first, then country_value, then country_of_manufacture as fallback
         let countryId = null;
 
-        // Prefer country_value if available, otherwise use country_of_manufacture
-        const countrySource = sourceProduct.country_value || sourceProduct.country_of_manufacture;
+        // Prefer country_int (INT table) if available, otherwise country_value (flat), otherwise country_of_manufacture (EAV)
+        const countrySource = sourceProduct.country_int || sourceProduct.country_value || sourceProduct.country_of_manufacture;
 
         if (countrySource) {
             // Trim whitespace and handle empty/null values

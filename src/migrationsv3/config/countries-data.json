@@ -1256,16 +1256,6 @@
       "iso3": "EUE"
     },
     {
-      "name": "Great Britain",
-      "iso2": "GR",
-      "iso3": "GBR"
-    },
-    {
-      "name": "United States of America",
-      "iso2": "UN",
-      "iso3": "USA"
-    },
-    {
       "name": "Netherlands",
       "iso2": "NE",
       "iso3": "NLD"
