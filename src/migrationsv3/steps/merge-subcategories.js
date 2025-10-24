@@ -9,12 +9,20 @@ V3 Business Logic:
 - Alt kategoriler aynı isimlerde olabilir (örn: Sovereigns altında George III)
 - Bu kategori çiflerini merge ederek tek tree'e düşürmek gerekiyor
 
-## New Clean Merge Logic (Step-by-Step):
+## New Clean Merge Logic (BOTTOM-UP APPROACH - Step-by-Step):
 1. Collect categories with migration codes from target DB
 2. Analyze source parent entity ID mapping (active vs archive trees)
 3. Create merge groups for categories with same slug prefix
-4. Execute category merges with proper product relationship transfer
-5. Clean up and update parent slugs
+4. Build category hierarchy levels (depth calculation)
+5. Execute BOTTOM-UP category merges (subcategories first, root categories last)
+6. Handle any orphaned subcategories after merge operations
+7. Clean up and update parent slugs
+
+## Bottom-Up Approach Benefits:
+- Prevents orphaned subcategories by merging deepest levels first
+- Ensures parent-child relationships remain intact during merges
+- Transfers products from leaf categories before parents are deleted
+- Eliminates need for complex orphaned subcategory recovery logic
 
 ## Kullanım
 node src/migrationsv3/steps/merge-subcategories.js
@@ -84,10 +92,16 @@ class CleanSubcategoryMergerV3 {
                 return { success: true, message: 'No mergeable groups found' };
             }
 
-            // Step 3: Execute merges
-            const mergeResults = await this.executeCategoryMerges(mergeGroups);
+            // Step 4: Build category hierarchy mapping for bottom-up processing
+            const hierarchyMap = await this.buildCategoryHierarchyMap(mergeGroups);
 
-            // Step 4: Update parent slugs
+            // Step 5: Execute BOTTOM-UP category merges (deepest levels first)
+            const mergeResults = await this.executeBottomUpCategoryMerges(mergeGroups, hierarchyMap);
+
+            // Step 6: Handle any orphaned subcategories (backup safety net)
+            await this.handleOrphanedSubcategories();
+
+            // Step 7: Update parent slugs
             await this.updateParentSlugs();
 
             logger.success('✅ Clean subcategory merger completed successfully');
@@ -243,6 +257,154 @@ class CleanSubcategoryMergerV3 {
         return stats;
     }
 
+    // Step 4: Build category hierarchy mapping for bottom-up processing
+    async buildCategoryHierarchyMap(mergeGroups) {
+        logger.info('🔍 Step 4: Building category hierarchy mapping...');
+
+        // Get all category IDs from merge groups
+        const allCategoryIds = mergeGroups.flatMap(group => group.categories.map(cat => cat.category_id));
+
+        if (allCategoryIds.length === 0) {
+            logger.warn('No categories found in merge groups');
+            return new Map();
+        }
+
+        // Get full category hierarchy information
+        const placeholders = allCategoryIds.map((_, index) => `$${index + 1}`).join(', ');
+        const query = `
+            SELECT
+                c.id,
+                c.parent_id,
+                c.code,
+                ct.title,
+                ct.slug
+            FROM categories c
+            LEFT JOIN category_translations ct ON c.id = ct.category_id
+            WHERE c.id IN (${placeholders})
+                AND ct.language_id = 'en'
+        `;
+
+        const categories = await this.targetDb.query(query, allCategoryIds);
+
+        // Build category map for easy lookup
+        const categoryMap = new Map();
+        categories.forEach(cat => categoryMap.set(cat.id, cat));
+
+        // Calculate depth for each category
+        const depthMap = new Map();
+
+        const calculateDepth = (categoryId) => {
+            if (depthMap.has(categoryId)) return depthMap.get(categoryId);
+
+            const category = categoryMap.get(categoryId);
+            if (!category || !category.parent_id) {
+                return 0; // Root level
+            }
+
+            const parentDepth = calculateDepth(category.parent_id);
+            const depth = parentDepth + 1;
+            depthMap.set(categoryId, depth);
+            return depth;
+        };
+
+        // Calculate depths for all categories
+        categories.forEach(cat => calculateDepth(cat.id));
+
+        // Group categories by depth level
+        const hierarchyLevels = new Map(); // depthLevel → categoryList
+        depthMap.forEach((depth, categoryId) => {
+            if (!hierarchyLevels.has(depth)) {
+                hierarchyLevels.set(depth, []);
+            }
+            hierarchyLevels.get(depth).push({
+                id: categoryId,
+                depth,
+                ...categoryMap.get(categoryId)
+            });
+        });
+
+        const maxDepth = Math.max(...Array.from(hierarchyLevels.keys()));
+
+        logger.info(`Category hierarchy built: ${maxDepth + 1} depth levels (${allCategoryIds.length} categories)`);
+
+        // Log hierarchy for debugging
+        for (let depth = 0; depth <= maxDepth; depth++) {
+            const levelCategories = hierarchyLevels.get(depth) || [];
+            logger.debug(`Depth ${depth}: ${levelCategories.length} categories`);
+        }
+
+        return hierarchyLevels;
+    }
+
+    // Step 5: Execute BOTTOM-UP category merges (deepest levels first)
+    async executeBottomUpCategoryMerges(mergeGroups, hierarchyLevels) {
+        logger.info('🔄 Step 5: Executing BOTTOM-UP category merges (deepest levels first)...');
+
+        const stats = {
+            totalGroups: mergeGroups.length,
+            processedGroups: 0,
+            mergedCategories: 0,
+            movedProducts: 0,
+            deletedCategories: 0
+        };
+
+        // Process categories level by level, starting from deepest
+        const depthLevels = Array.from(hierarchyLevels.keys()).sort((a, b) => b - a); // Deepest first
+
+        for (const depth of depthLevels) {
+            const levelCategories = hierarchyLevels.get(depth);
+            logger.info(`Processing hierarchy depth ${depth}: ${levelCategories.length} categories`);
+
+            // Group categories by their merge group at this level
+            const depthMergeGroups = new Map(); // mergeKey → categories in this depth
+
+            for (const category of levelCategories) {
+                // Find which merge group this category belongs to
+                const mergeGroup = mergeGroups.find(group =>
+                    group.categories.some(cat => cat.category_id === category.id)
+                );
+
+                if (mergeGroup) {
+                    if (!depthMergeGroups.has(mergeGroup.mergeKey)) {
+                        depthMergeGroups.set(mergeGroup.mergeKey, []);
+                    }
+                    depthMergeGroups.get(mergeGroup.mergeKey).push({
+                        ...category,
+                        ...mergeGroup.categories.find(cat => cat.category_id === category.id)
+                    });
+                }
+            }
+
+            // Process each merge group at this depth level
+            for (const [mergeKey, depthCategories] of depthMergeGroups) {
+                try {
+                    logger.info(`Processing merge group "${mergeKey}" at depth ${depth} with ${depthCategories.length} categories`);
+
+                    if (depthCategories.length < 2) {
+                        logger.debug(`Skipping merge group "${mergeKey}" - only ${depthCategories.length} category`);
+                        continue;
+                    }
+
+                    // Merge categories in this depth level
+                    const result = await this.mergeCategoriesInGroup(depthCategories, `depth-${depth}`);
+                    stats.mergedCategories += result.mergedCategories;
+                    stats.movedProducts += result.movedProducts;
+                    stats.deletedCategories += result.deletedCategories;
+
+                } catch (error) {
+                    logger.error(`Failed to process merge group "${mergeKey}" at depth ${depth}`, { error: error.message });
+                }
+            }
+
+            stats.processedGroups++;
+        }
+
+        logger.success(`✅ BOTTOM-UP merge execution completed: ${stats.processedGroups} depth levels processed`);
+        logger.success(`📊 BOTTOM-UP Stats: ${stats.mergedCategories} merged, ${stats.movedProducts} products moved, ${stats.deletedCategories} categories deleted`);
+
+        return stats;
+    }
+
     async mergeCategoriesInGroup(categories, categoryType = 'sub') {
         // Sort to prioritize active categories (lower entity IDs for active)
         const sortedCategories = categories.sort((a, b) => {
@@ -387,6 +549,151 @@ class CleanSubcategoryMergerV3 {
 
         } catch (error) {
             logger.error('Failed to update parent slugs', { error: error.message });
+        }
+    }
+
+    // Step 6: Handle orphaned subcategories (backup safety net)
+    async handleOrphanedSubcategories() {
+        logger.info('🧒 Step 6: Checking for orphaned subcategories after BOTTOM-UP merge operations...');
+
+        try {
+            // Find categories that still exist but their parent was deleted during merge
+            const orphanedCategories = await this.targetDb.query(`
+                SELECT
+                    c.id as category_id,
+                    c.code,
+                    c.parent_id,
+                    ct.title,
+                    ct.slug
+                FROM categories c
+                LEFT JOIN categories parent_c ON c.parent_id = parent_c.id
+                LEFT JOIN category_translations ct ON c.id = ct.category_id
+                WHERE c.parent_id IS NOT NULL
+                    AND parent_c.id IS NULL  -- Parent doesn't exist anymore
+                    AND c.code LIKE '%_%'  -- Only migration categories
+                    AND ct.language_id = 'en'
+            `);
+
+            if (orphanedCategories.length === 0) {
+                logger.info('✅ BOTTOM-UP approach successful - No orphaned subcategories found');
+                return { success: true, message: 'No orphaned subcategories found' };
+            }
+
+            logger.warn(`⚠️ BOTTOM-UP approach still produced ${orphanedCategories.length} orphaned subcategory(ies)!`);
+            logger.warn('This indicates an issue with the hierarchy analysis - attempting recovery...');
+
+            let totalOrphanedProductsMoved = 0;
+
+            // For each orphaned category, try to find where its products should go
+            for (const orphan of orphanedCategories) {
+                logger.info(`Processing orphan category "${orphan.title}" (${orphan.category_id}) - parent ${orphan.parent_id} was deleted`);
+
+                // Parse the code to understand the category hierarchy
+                const parts = orphan.code.split('_');
+                if (parts.length !== 3) {
+                    logger.warn(`Cannot process orphan ${orphan.category_id} - invalid code format: ${orphan.code}`);
+                    continue;
+                }
+
+                const parentEntityId = parseInt(parts[1]); // The entity ID this category belonged to
+                const categorySlug = parts[0]; // The slug prefix (e.g., "crowns", "sovereigns")
+
+                // Try to find the surviving category that should be the parent
+                const survivingParentId = await this.findAppropriateParentForOrphan(orphan);
+
+                if (survivingParentId) {
+                    logger.info(`Found surviving parent ${survivingParentId} for orphan ${orphan.category_id}`);
+
+                    const transferResult = await this.transferProductsToMainCategory(orphan.category_id, survivingParentId);
+                    totalOrphanedProductsMoved += transferResult.movedCount;
+
+                    // Now we can safely delete the orphaned category
+                    await this.deleteCategorySafely(orphan.category_id);
+                    logger.info(`Deleted recovered orphan category "${orphan.title}" after transferring ${transferResult.movedCount} products`);
+                } else {
+                    logger.error(`Could not find appropriate parent for orphan category "${orphan.title}" (${orphan.category_id})`);
+                    logger.error(`Products from this category will remain accessible via other category associations`);
+                }
+            }
+
+            logger.success(`✅ Orphaned subcategory handling completed - moved ${totalOrphanedProductsMoved} products from ${orphanedCategories.length} orphaned categories`);
+
+            if (orphanedCategories.length > 0) {
+                logger.warn(`❌ BOTTOM-UP approach had issues - ${orphanedCategories.length} orphans required recovery`);
+                logger.warn('Consider reviewing the hierarchy building logic to prevent orphaned subcategories');
+            }
+
+            return { success: true, message: `Handled ${orphanedCategories.length} orphaned subcategories`, movedProducts: totalOrphanedProductsMoved };
+
+        } catch (error) {
+            logger.error('Failed to handle orphaned subcategories', { error: error.message });
+            return { success: false, message: error.message };
+        }
+    }
+
+    async findAppropriateParentForOrphan(orphanedCategory) {
+        try {
+            // Parse the code to understand the category hierarchy
+            const parts = orphanedCategory.code.split('_');
+            if (parts.length !== 3) return null;
+
+            const parentEntityId = parseInt(parts[1]); // The entity ID this category belonged to
+            const categorySlug = parts[0]; // The slug prefix (e.g., "crowns", "sovereigns")
+
+            // First, check if there's a surviving category with the same parent entity ID
+            const possibleParents = await this.targetDb.query(`
+                SELECT c.id, c.code
+                FROM categories c
+                WHERE c.code LIKE $1
+                    AND c.parent_id IS NULL
+                    AND c.code LIKE '%_%'
+            `, [`%_${parentEntityId}_%`]);
+
+            if (possibleParents.length > 0) {
+                // Return the first surviving root category for this entity ID
+                return possibleParents[0].id;
+            }
+
+            // Second fallback: Find any surviving category that might be appropriate
+            // Based on the source parent mapping, find where this category's parent "would have gone"
+
+            // Extract the exact entity ID pattern
+            const orphanEntityId = parseInt(parts[2]);
+            const parentMappedEntityId = this.sourceParentMapping[parentEntityId];
+
+            if (parentMappedEntityId) {
+                // Look for categories from the mapped parent entity
+                const mappedParents = await this.targetDb.query(`
+                    SELECT c.id, c.code
+                    FROM categories c
+                    WHERE c.code LIKE $1 AND c.parent_id IS NULL
+                `, [`%_${parentMappedEntityId}_%`]);
+
+                if (mappedParents.length > 0) {
+                    return mappedParents[0].id;
+                }
+            }
+
+            // Last resort: Any surviving root category (to prevent product loss)
+            const anyRootCategory = await this.targetDb.query(`
+                SELECT c.id
+                FROM categories c
+                WHERE c.parent_id IS NULL
+                    AND c.code LIKE '%_%'
+                ORDER BY c.id
+                LIMIT 1
+            `);
+
+            if (anyRootCategory.length > 0) {
+                logger.warn(`Using fallback root category ${anyRootCategory[0].id} for orphaned category ${orphanedCategory.category_id}`);
+                return anyRootCategory[0].id;
+            }
+
+            return null; // No suitable parent found
+
+        } catch (error) {
+            logger.error('Failed to find appropriate parent for orphan', { error: error.message, orphanId: orphanedCategory.category_id });
+            return null;
         }
     }
 
