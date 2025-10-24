@@ -69,6 +69,11 @@ ORDER BY COALESCE(parent_ct.slug, '') desc, ct.slug
             await this.targetDb.query(sqlDelete, [categoriesToDelete]);
             logger.info(`✅ Toplam ${categoriesToDelete.length} kategori silindi`);
 
+            // Step 6: Kalan kategoriler için parent slug hesaplaması ve güncellemesi yap
+            logger.info('🔄 Kalan kategoriler için parent slug hesaplaması başlatılıyor...');
+            await this.calculateParentSlugs();
+            logger.info('✅ Parent slug hesaplaması tamamlandı');
+
             logger.info('Merge process completed successfully.');
 
             return { success: true, message: `Found ${result.length} categories groups to merge` };
@@ -116,6 +121,115 @@ ORDER BY COALESCE(parent_ct.slug, '') desc, ct.slug
 
         } catch (error) {
             logger.error(`Parent transferi hatası (${categoryIdFrom} → ${categoryIdTo}):`, { error: error.message });
+            throw error;
+        }
+    }
+
+    // Parent slug hesaplaması - merge sonrası kalan kategorilerin hiyerarşik parent slugs'larını hesaplar
+    async calculateParentSlugs() {
+        try {
+            logger.info('Parent slug hesaplaması başlatılıyor...');
+
+            // Mevcut kategorileri ve parent ilişkilerini al
+            const categories = await this.targetDb.query(`
+                SELECT
+                    c.id,
+                    c.parent_id,
+                    ct.slug,
+                    ct.title
+                FROM categories c
+                LEFT JOIN category_translations ct ON c.id = ct.category_id
+                WHERE ct.language_id = $1
+                ORDER BY c.id
+            `, [this.defaultLanguageId]);
+
+            if (categories.length === 0) {
+                logger.debug('Parent slug hesaplaması için kategori bulunamadı');
+                return;
+            }
+
+            // Kategori map'i oluştur
+            const categoryMap = new Map();
+            categories.forEach(cat => {
+                categoryMap.set(cat.id, cat);
+            });
+
+            // Parent slugs'ları hesapla için cache
+            const parentSlugsCache = new Map();
+
+            // Kategorileri hierarchy seviyesine göre sırala (parent'lar önce)
+            const sortedCategories = categories.sort((a, b) => {
+                // Her kategorinin kaç parent'ı olduğunu say
+                let aDepth = 0;
+                let currentA = a;
+                while (currentA.parent_id) {
+                    aDepth++;
+                    currentA = categoryMap.get(currentA.parent_id);
+                    if (!currentA) break;
+                }
+
+                let bDepth = 0;
+                let currentB = b;
+                while (currentB.parent_id) {
+                    bDepth++;
+                    currentB = categoryMap.get(currentB.parent_id);
+                    if (!currentB) break;
+                }
+
+                return aDepth - bDepth;
+            });
+
+            // Her kategori için parent slugs'ları hesapla (parent'lar önce)
+            for (const category of sortedCategories) {
+                const slugs = [];
+                let currentId = category.parent_id;
+
+                // Hierarchy'yi yukarı doğru gezerek parent slugs'ları topla
+                while (currentId) {
+                    const parent = categoryMap.get(currentId);
+                    if (!parent || !parent.slug) break;
+
+                    slugs.unshift(parent.slug);
+                    currentId = parent.parent_id;
+                }
+
+                // Parent slugs varsa "parent-slugs/current-slug" formatında oluştur
+                let parentSlugs = null;
+                if (slugs.length > 0) {
+                    if (category.slug) {
+                        parentSlugs = slugs.join('/') + '/' + category.slug;
+                    } else {
+                        parentSlugs = slugs.join('/');
+                    }
+                }
+
+                parentSlugsCache.set(category.id, parentSlugs);
+            }
+
+            // Database'i hesaplanan parent slugs ile güncelle
+            let updatedCount = 0;
+            for (const category of categories) {
+                const parentSlugs = parentSlugsCache.get(category.id);
+
+                // Sadece parent_slugs null ise güncelle
+                const currentTranslation = await this.targetDb.query(`
+                    SELECT parent_slugs FROM category_translations
+                    WHERE category_id = $1 AND language_id = $2
+                `, [category.id, this.defaultLanguageId]);
+
+                if (currentTranslation.length > 0 && currentTranslation[0].parent_slugs === null) {
+                    await this.targetDb.query(`
+                        UPDATE category_translations
+                        SET parent_slugs = $1, updated_at = NOW()
+                        WHERE category_id = $2 AND language_id = $3
+                    `, [parentSlugs, category.id, this.defaultLanguageId]);
+                    updatedCount++;
+                }
+            }
+
+            logger.info(`✅ ${updatedCount} kategorinin parent slugs'ı güncellendi`);
+        } catch (error) {
+            logger.error('Parent slug hesaplaması hatası:', { error: error.message });
             throw error;
         }
     }
