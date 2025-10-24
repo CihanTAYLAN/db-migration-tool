@@ -246,7 +246,7 @@ class MigrationV3 {
                     return await combinedImageProcessingStep.run();
 
                 case 'merge':
-                    const mergeStep = new MergeStep(this.targetDb);
+                    const mergeStep = new MergeStep(this.targetDb, this.context.defaultLanguageId);
                     return await mergeStep.run();
 
                 case 'updateMasterCategoryIds':
