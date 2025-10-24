@@ -14,6 +14,7 @@ const BlogPostsStep = require('./steps/blog-posts');
 const CategoriesStep = require('./steps/categories');
 const ProductsStep = require('./steps/products');
 const MergeStep = require('./steps/merge-subcategories');
+const CertCoinCategoriesStep = require('./steps/cert-coin-categories');
 const UpdateMasterCategoryIdsStep = require('./steps/update-master-category-ids');
 const CustomersStep = require('./steps/customers');
 const OrdersStep = require('./steps/orders');
@@ -117,10 +118,24 @@ class MigrationV3 {
                 results.merge = await mergeStep.run();
             }
 
-            // Step 6: Update Master Category IDs
-            // Fix master_category_id NULL fields after subcategory merge
+            // Step 6: Cert Coin Categories
+            // Map coins to certification categories from CSV data based on cert-number and coin-number
+            if (config.steps.certCoinCategories.enabled) {
+                logger.info('🏆 Step 6: Cert Coin Categories');
+                const certCoinCategoriesStep = new CertCoinCategoriesStep(
+                    this.sourceDb,
+                    this.targetDb,
+                    config,
+                    this.context.eavMapper,
+                    this.context.defaultLanguageId
+                );
+                results.certCoinCategories = await certCoinCategoriesStep.run();
+            }
+
+            // Step 7: Update Master Category IDs
+            // Fix master_category_id NULL fields after category assignments
             if (config.steps.updateMasterCategoryIds.enabled) {
-                logger.info('📂 Step 6: Update Master Category IDs');
+                logger.info('📂 Step 7: Update Master Category IDs');
                 const updateMasterCategoryIdsStep = new UpdateMasterCategoryIdsStep(this.targetDb, this.context.defaultLanguageId);
                 results.updateMasterCategoryIds = await updateMasterCategoryIdsStep.run();
             }
@@ -240,6 +255,16 @@ class MigrationV3 {
                 case 'merge':
                     const mergeStep = new MergeStep(this.targetDb, this.context.defaultLanguageId);
                     return await mergeStep.run();
+
+                case 'certCoinCategories':
+                    const certCoinCategoriesStep = new CertCoinCategoriesStep(
+                        this.sourceDb,
+                        this.targetDb,
+                        config,
+                        this.context.eavMapper,
+                        this.context.defaultLanguageId
+                    );
+                    return await certCoinCategoriesStep.run();
 
                 case 'updateMasterCategoryIds':
                     const updateMasterCategoryIdsStep = new UpdateMasterCategoryIdsStep(this.targetDb, this.context.defaultLanguageId);

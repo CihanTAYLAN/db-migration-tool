@@ -173,3 +173,4 @@ yarn-debug.log*
 yarn-error.log*
 sql-ddl-informations
 customer_emails_for_password_reset.csv
+src/migrationsv3/config/cert_coin_categories.csv

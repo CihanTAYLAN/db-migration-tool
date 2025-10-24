@@ -48,6 +48,12 @@ const config = {
             batchSize: 100,
             parallelLimit: 1
         },
+        certCoinCategories: {
+            enabled: true,
+            description: 'Map coins to certification categories from CSV data',
+            batchSize: 50,
+            parallelLimit: 1
+        },
         updateMasterCategoryIds: {
             enabled: true,
             description: 'Fix master_category_id NULL fields after merge',
