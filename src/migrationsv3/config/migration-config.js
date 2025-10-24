@@ -54,12 +54,6 @@ const config = {
             batchSize: 1000,
             parallelLimit: 1
         },
-        combinedImageProcessing: {
-            enabled: true,
-            description: 'Update image paths and set master images in one step',
-            batchSize: 500,
-            parallelLimit: 1
-        },
         customers: {
             enabled: true,
             description: 'Customer and address migration',
