@@ -109,19 +109,11 @@ class MigrationV3 {
                 results.products = await productsStep.run();
             }
 
-            // // Step 4: Combined Image Processing
-            // // Update image paths with backend prefix and set master images
-            // if (config.steps.combinedImageProcessing.enabled) {
-            //     logger.info('🖼️  Step 4: Combined Image Processing');
-            //     const combinedImageProcessingStep = new CombinedImageProcessingStep(this.sourceDb, this.targetDb, config);
-            //     results.combinedImageProcessing = await combinedImageProcessingStep.run();
-            // }
-
             // Step 5: Merge
             // Merge duplicate subcategories based on URL key prefixes + calculate parent slugs
             if (config.steps.merge.enabled) {
                 logger.info('🔗 Step 5: Merge Subcategories');
-                const mergeStep = new MergeStep(this.targetDb);
+                const mergeStep = new MergeStep(this.targetDb, this.context.defaultLanguageId);
                 results.merge = await mergeStep.run();
             }
 
