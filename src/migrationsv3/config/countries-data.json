@@ -1236,11 +1236,6 @@
       "iso3": "XZZ"
     },
     {
-      "name": "Rhodesia",
-      "iso2": "RH",
-      "iso3": "RHO"
-    },
-    {
       "name": "Yugoslavia",
       "iso2": "YU",
       "iso3": "YUG"
@@ -1254,11 +1249,6 @@
       "name": "European Union",
       "iso2": "EU",
       "iso3": "EUE"
-    },
-    {
-      "name": "Netherlands",
-      "iso2": "NE",
-      "iso3": "NLD"
     },
     {
       "name": "Tristan da Cunha",
