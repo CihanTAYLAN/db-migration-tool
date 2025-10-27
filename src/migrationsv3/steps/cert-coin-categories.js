@@ -93,6 +93,7 @@ class CertCoinCategoriesStep {
     for (const [certCoinKey, rows] of certCoinGroups) {
 
       try {
+        console.log(certCoinKey);
         const [certNumber, coinNumber] = certCoinKey.split('_');
 
         // Find product by cert-number and coin-number
@@ -152,7 +153,7 @@ class CertCoinCategoriesStep {
     }
 
     // Find target categories by their slugs
-    const categoryIds = [];
+    let categoryIds = [];
     for (const categorySlug of categories) {
       const categoryId = await this.findCategoryBySlug(categorySlug);
       if (categoryId) {
@@ -161,6 +162,8 @@ class CertCoinCategoriesStep {
         logger.warning(`Category not found for slug: ${categorySlug}`);
       }
     }
+
+    categoryIds = categoryIds.reverse(); // Reverse to maintain hierarchy order
 
     if (categoryIds.length === 0) {
       logger.warning(`No valid categories found for product ${product.id}`);
@@ -218,8 +221,6 @@ class CertCoinCategoriesStep {
   }
 
   async updateProductMasterCategory(productId, categoryId, certNumber, coinNumber) {
-    console.log('pup');
-
     const query = `
             UPDATE products
             SET master_category_id = $1, updated_at = NOW(),
