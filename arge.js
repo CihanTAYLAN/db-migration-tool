@@ -18,7 +18,7 @@ new Promise((resolve, reject) => {
     });
 }).then((results) => {
   console.log(results);
-  // results dizisini countries-data-v2.json dosyasına yaz
+  // results dizisini countries-data.json dosyasına yaz
   // {
   //   "name": "Australia",
   //   "iso2": "AU",
@@ -48,10 +48,10 @@ new Promise((resolve, reject) => {
     console.log('No duplicate country names found.');
   }
 
-  fs.writeFileSync(path.join(__dirname, 'src/migrationsv3/config/countries-data-v2.json'), JSON.stringify(countriesData, null, 2));
+  fs.writeFileSync(path.join(__dirname, 'src/migrationsv3/config/countries-data.json'), JSON.stringify(countriesData, null, 2));
 
 
-  console.log('Countries data written to countries-data-v2.json');
+  console.log('Countries data written to countries-data.json');
 }).catch((error) => {
   console.error('Error reading countries list:', error);
 });

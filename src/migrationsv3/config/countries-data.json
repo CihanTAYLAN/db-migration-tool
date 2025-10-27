@@ -7,12 +7,7 @@
     },
     {
       "name": "Great Britain",
-      "iso2": "UK",
-      "iso3": "GBR"
-    },
-    {
-      "name": "United Kingdom",
-      "iso2": "UK",
+      "iso2": "GB",
       "iso3": "GBR"
     },
     {
@@ -207,298 +202,303 @@
     },
     {
       "name": "Brazil",
-      "iso2": "BR",
-      "iso3": "BRA"
+      "iso2": "IR",
+      "iso3": "IRN"
     },
     {
       "name": "British Indian Ocean Territory (Chagos Archipelago)",
-      "iso2": "IO",
-      "iso3": "IOT"
+      "iso2": "IQ",
+      "iso3": "IRQ"
     },
     {
       "name": "British Virgin Islands",
-      "iso2": "VG",
-      "iso3": "VGB"
+      "iso2": "IE",
+      "iso3": "IRL"
     },
     {
       "name": "Brunei Darussalam",
-      "iso2": "BN",
-      "iso3": "BRN"
+      "iso2": "IL",
+      "iso3": "ISR"
     },
     {
       "name": "Bulgaria",
-      "iso2": "BG",
-      "iso3": "BGR"
+      "iso2": "IT",
+      "iso3": "ITA"
     },
     {
       "name": "Burkina Faso",
-      "iso2": "BF",
-      "iso3": "BFA"
+      "iso2": "JM",
+      "iso3": "JAM"
     },
     {
       "name": "Burundi",
-      "iso2": "BI",
-      "iso3": "BDI"
+      "iso2": "JP",
+      "iso3": "JPN"
     },
     {
       "name": "Cambodia",
-      "iso2": "KH",
-      "iso3": "KHM"
+      "iso2": "JE",
+      "iso3": "JEY"
     },
     {
       "name": "Cameroon",
-      "iso2": "CM",
-      "iso3": "CMR"
+      "iso2": "JO",
+      "iso3": "JOR"
     },
     {
       "name": "Cape Verde",
-      "iso2": "CV",
-      "iso3": "CPV"
+      "iso2": "KZ",
+      "iso3": "KAZ"
     },
     {
       "name": "Cayman Islands",
-      "iso2": "KY",
-      "iso3": "CYM"
+      "iso2": "KE",
+      "iso3": "KEN"
     },
     {
       "name": "Central African Republic",
-      "iso2": "CF",
-      "iso3": "CAF"
+      "iso2": "KI",
+      "iso3": "KIR"
     },
     {
       "name": "Chad",
-      "iso2": "TD",
-      "iso3": "TCD"
+      "iso2": "KP",
+      "iso3": "PRK"
     },
     {
       "name": "Chile",
-      "iso2": "CL",
-      "iso3": "CHL"
+      "iso2": "KP",
+      "iso3": "PRK"
     },
     {
       "name": "China",
-      "iso2": "CN",
-      "iso3": "CHN"
+      "iso2": "KR",
+      "iso3": "KOR"
     },
     {
       "name": "Christmas Island",
-      "iso2": "CX",
-      "iso3": "CXR"
+      "iso2": "KW",
+      "iso3": "KWT"
     },
     {
       "name": "Cocos (Keeling) Islands",
-      "iso2": "CC",
-      "iso3": "CCK"
+      "iso2": "KG",
+      "iso3": "KGZ"
     },
     {
       "name": "Colombia",
-      "iso2": "CO",
-      "iso3": "COL"
+      "iso2": "LA",
+      "iso3": "LAO"
     },
     {
-      "name": "Comoros",
-      "iso2": "KM",
-      "iso3": "COM"
+      "name": "Comoros the",
+      "iso2": "LV",
+      "iso3": "LVA"
     },
     {
       "name": "Congo",
-      "iso2": "CG",
-      "iso3": "COG"
+      "iso2": "LB",
+      "iso3": "LBN"
     },
     {
       "name": "Congo the",
-      "iso2": "CD",
-      "iso3": "COD"
+      "iso2": "LS",
+      "iso3": "LSO"
     },
     {
       "name": "Cook Islands",
-      "iso2": "CK",
-      "iso3": "COK"
+      "iso2": "LR",
+      "iso3": "LBR"
     },
     {
       "name": "Costa Rica",
-      "iso2": "CR",
-      "iso3": "CRI"
+      "iso2": "LY",
+      "iso3": "LBY"
     },
     {
       "name": "Cote d'Ivoire",
-      "iso2": "CI",
-      "iso3": "CIV"
+      "iso2": "LI",
+      "iso3": "LIE"
     },
     {
       "name": "Croatia",
-      "iso2": "HR",
-      "iso3": "HRV"
+      "iso2": "LT",
+      "iso3": "LTU"
     },
     {
       "name": "Cuba",
-      "iso2": "CU",
-      "iso3": "CUB"
+      "iso2": "LU",
+      "iso3": "LUX"
     },
     {
       "name": "Cyprus",
-      "iso2": "CY",
-      "iso3": "CYP"
+      "iso2": "MO",
+      "iso3": "MAC"
     },
     {
       "name": "Czech Republic",
-      "iso2": "CZ",
-      "iso3": "CZE"
+      "iso2": "MK",
+      "iso3": "MKD"
+    },
+    {
+      "name": "Czechia",
+      "iso2": "MK",
+      "iso3": "MKD"
     },
     {
       "name": "Denmark",
-      "iso2": "DK",
-      "iso3": "DNK"
+      "iso2": "MG",
+      "iso3": "MDG"
     },
     {
       "name": "Djibouti",
-      "iso2": "DJ",
-      "iso3": "DJI"
+      "iso2": "MW",
+      "iso3": "MWI"
     },
     {
       "name": "Dominica",
-      "iso2": "DM",
-      "iso3": "DMA"
+      "iso2": "MY",
+      "iso3": "MYS"
     },
     {
       "name": "Dominican Republic",
-      "iso2": "DO",
-      "iso3": "DOM"
+      "iso2": "MV",
+      "iso3": "MDV"
     },
     {
       "name": "Ecuador",
-      "iso2": "EC",
-      "iso3": "ECU"
+      "iso2": "ML",
+      "iso3": "MLI"
     },
     {
       "name": "Egypt",
-      "iso2": "EG",
-      "iso3": "EGY"
+      "iso2": "MT",
+      "iso3": "MLT"
     },
     {
       "name": "El Salvador",
-      "iso2": "SV",
-      "iso3": "SLV"
+      "iso2": "MH",
+      "iso3": "MHL"
     },
     {
       "name": "Equatorial Guinea",
-      "iso2": "GQ",
-      "iso3": "GNQ"
+      "iso2": "MQ",
+      "iso3": "MTQ"
     },
     {
       "name": "Eritrea",
-      "iso2": "ER",
-      "iso3": "ERI"
+      "iso2": "MR",
+      "iso3": "MRT"
     },
     {
       "name": "Estonia",
-      "iso2": "EE",
-      "iso3": "EST"
+      "iso2": "MU",
+      "iso3": "MUS"
     },
     {
       "name": "Ethiopia",
-      "iso2": "ET",
-      "iso3": "ETH"
+      "iso2": "YT",
+      "iso3": "MYT"
     },
     {
       "name": "Faroe Islands",
-      "iso2": "FO",
-      "iso3": "FRO"
+      "iso2": "FM",
+      "iso3": "FSM"
     },
     {
       "name": "Falkland Islands (Malvinas)",
-      "iso2": "FK",
-      "iso3": "FLK"
+      "iso2": "MD",
+      "iso3": "MDA"
     },
     {
       "name": "Finland",
-      "iso2": "FI",
-      "iso3": "FIN"
+      "iso2": "MC",
+      "iso3": "MCO"
     },
     {
       "name": "France",
-      "iso2": "FR",
-      "iso3": "FRA"
+      "iso2": "MN",
+      "iso3": "MNG"
     },
     {
       "name": "French Guiana",
-      "iso2": "GF",
-      "iso3": "GUF"
+      "iso2": "ME",
+      "iso3": "MNE"
     },
     {
       "name": "French Polynesia",
-      "iso2": "PF",
-      "iso3": "PYF"
+      "iso2": "MS",
+      "iso3": "MSR"
     },
     {
       "name": "French Southern Territories",
-      "iso2": "TF",
-      "iso3": "ATF"
+      "iso2": "MA",
+      "iso3": "MAR"
     },
     {
       "name": "Gabon",
-      "iso2": "GA",
-      "iso3": "GAB"
+      "iso2": "MZ",
+      "iso3": "MOZ"
     },
     {
       "name": "Gambia the",
-      "iso2": "GM",
-      "iso3": "GMB"
+      "iso2": "MM",
+      "iso3": "MMR"
     },
     {
       "name": "Georgia",
-      "iso2": "GE",
-      "iso3": "GEO"
+      "iso2": "NA",
+      "iso3": "NAM"
     },
     {
       "name": "Ghana",
-      "iso2": "GH",
-      "iso3": "GHA"
+      "iso2": "PT",
+      "iso3": "PRT"
     },
     {
       "name": "Gibraltar",
-      "iso2": "GI",
-      "iso3": "GIB"
+      "iso2": "PR",
+      "iso3": "PRI"
     },
     {
       "name": "Greece",
-      "iso2": "GR",
-      "iso3": "GRC"
+      "iso2": "QA",
+      "iso3": "QAT"
     },
     {
       "name": "Greenland",
-      "iso2": "GL",
-      "iso3": "GRL"
+      "iso2": "RE",
+      "iso3": "REU"
     },
     {
       "name": "Grenada",
-      "iso2": "GD",
-      "iso3": "GRD"
+      "iso2": "RO",
+      "iso3": "ROU"
     },
     {
       "name": "Guadeloupe",
-      "iso2": "GP",
-      "iso3": "GLP"
+      "iso2": "RU",
+      "iso3": "RUS"
     },
     {
       "name": "Guam",
-      "iso2": "GU",
-      "iso3": "GUM"
+      "iso2": "RW",
+      "iso3": "RWA"
     },
     {
       "name": "Guatemala",
-      "iso2": "GT",
-      "iso3": "GTM"
+      "iso2": "BL",
+      "iso3": "BLM"
     },
     {
       "name": "Guernsey",
-      "iso2": "GG",
-      "iso3": "GGY"
+      "iso2": "SH",
+      "iso3": "SHN"
     },
     {
       "name": "Guinea",
-      "iso2": "GN",
-      "iso3": "GIN"
+      "iso2": "KN",
+      "iso3": "KNA"
     },
     {
       "name": "Guinea-Bissau",
@@ -602,293 +602,308 @@
     },
     {
       "name": "Kenya",
-      "iso2": "KE",
-      "iso3": "KEN"
+      "iso2": "PN",
+      "iso3": "PCN"
     },
     {
       "name": "Kiribati",
-      "iso2": "KI",
-      "iso3": "KIR"
+      "iso2": "PL",
+      "iso3": "POL"
     },
     {
       "name": "Korea",
-      "iso2": "KP",
-      "iso3": "PRK"
+      "iso2": "PT",
+      "iso3": "PRT"
+    },
+    {
+      "name": "North Korea",
+      "iso2": "PR",
+      "iso3": "PRI"
+    },
+    {
+      "name": "South Korea",
+      "iso2": "QA",
+      "iso3": "QAT"
     },
     {
       "name": "Kuwait",
-      "iso2": "KW",
-      "iso3": "KWT"
+      "iso2": "RE",
+      "iso3": "REU"
     },
     {
       "name": "Kyrgyz Republic",
-      "iso2": "KG",
-      "iso3": "KGZ"
+      "iso2": "RO",
+      "iso3": "ROU"
     },
     {
       "name": "Lao",
-      "iso2": "LA",
-      "iso3": "LAO"
+      "iso2": "RU",
+      "iso3": "RUS"
     },
     {
       "name": "Latvia",
-      "iso2": "LV",
-      "iso3": "LVA"
+      "iso2": "RW",
+      "iso3": "RWA"
     },
     {
       "name": "Lebanon",
-      "iso2": "LB",
-      "iso3": "LBN"
+      "iso2": "BL",
+      "iso3": "BLM"
     },
     {
       "name": "Lesotho",
-      "iso2": "LS",
-      "iso3": "LSO"
+      "iso2": "SH",
+      "iso3": "SHN"
     },
     {
       "name": "Liberia",
-      "iso2": "LR",
-      "iso3": "LBR"
+      "iso2": "KN",
+      "iso3": "KNA"
     },
     {
       "name": "Libyan Arab Jamahiriya",
-      "iso2": "LY",
-      "iso3": "LBY"
+      "iso2": "LC",
+      "iso3": "LCA"
     },
     {
       "name": "Liechtenstein",
-      "iso2": "LI",
-      "iso3": "LIE"
+      "iso2": "MF",
+      "iso3": "MAF"
     },
     {
       "name": "Lithuania",
-      "iso2": "LT",
-      "iso3": "LTU"
+      "iso2": "PM",
+      "iso3": "SPM"
     },
     {
       "name": "Luxembourg",
-      "iso2": "LU",
-      "iso3": "LUX"
+      "iso2": "VC",
+      "iso3": "VCT"
     },
     {
       "name": "Macao",
-      "iso2": "MO",
-      "iso3": "MAC"
+      "iso2": "WS",
+      "iso3": "WSM"
     },
     {
       "name": "Macedonia",
-      "iso2": "MK",
-      "iso3": "MKD"
+      "iso2": "SM",
+      "iso3": "SMR"
+    },
+    {
+      "name": "North Macedonia",
+      "iso2": "ST",
+      "iso3": "STP"
     },
     {
       "name": "Madagascar",
-      "iso2": "MG",
-      "iso3": "MDG"
+      "iso2": "SN",
+      "iso3": "SEN"
     },
     {
       "name": "Malawi",
-      "iso2": "MW",
-      "iso3": "MWI"
+      "iso2": "RS",
+      "iso3": "SRB"
     },
     {
       "name": "Malaysia",
-      "iso2": "MY",
-      "iso3": "MYS"
+      "iso2": "SC",
+      "iso3": "SYC"
     },
     {
       "name": "Maldives",
-      "iso2": "MV",
-      "iso3": "MDV"
+      "iso2": "SL",
+      "iso3": "SLE"
     },
     {
       "name": "Mali",
-      "iso2": "ML",
-      "iso3": "MLI"
+      "iso2": "SG",
+      "iso3": "SGP"
     },
     {
       "name": "Malta",
-      "iso2": "MT",
-      "iso3": "MLT"
+      "iso2": "SK",
+      "iso3": "SVK"
     },
     {
       "name": "Marshall Islands",
-      "iso2": "MH",
-      "iso3": "MHL"
+      "iso2": "SI",
+      "iso3": "SVN"
     },
     {
       "name": "Martinique",
-      "iso2": "MQ",
-      "iso3": "MTQ"
+      "iso2": "SB",
+      "iso3": "SLB"
     },
     {
       "name": "Mauritania",
-      "iso2": "MR",
-      "iso3": "MRT"
+      "iso2": "SO",
+      "iso3": "SOM"
     },
     {
       "name": "Mauritius",
-      "iso2": "MU",
-      "iso3": "MUS"
+      "iso2": "GS",
+      "iso3": "SGS"
     },
     {
       "name": "Mayotte",
-      "iso2": "YT",
-      "iso3": "MYT"
+      "iso2": "SS",
+      "iso3": "SSD"
     },
     {
       "name": "Micronesia",
-      "iso2": "FM",
-      "iso3": "FSM"
+      "iso2": "ES",
+      "iso3": "ESP"
     },
     {
       "name": "Moldova",
-      "iso2": "MD",
-      "iso3": "MDA"
+      "iso2": "LK",
+      "iso3": "LKA"
     },
     {
       "name": "Monaco",
-      "iso2": "MC",
-      "iso3": "MCO"
+      "iso2": "SD",
+      "iso3": "SDN"
     },
     {
       "name": "Mongolia",
-      "iso2": "MN",
-      "iso3": "MNG"
+      "iso2": "SR",
+      "iso3": "SUR"
     },
     {
       "name": "Montenegro",
-      "iso2": "ME",
-      "iso3": "MNE"
+      "iso2": "SJ",
+      "iso3": "SJM"
     },
     {
       "name": "Montserrat",
-      "iso2": "MS",
-      "iso3": "MSR"
+      "iso2": "SZ",
+      "iso3": "SWZ"
     },
     {
       "name": "Morocco",
-      "iso2": "MA",
-      "iso3": "MAR"
+      "iso2": "SZ",
+      "iso3": "SWZ"
     },
     {
       "name": "Mozambique",
-      "iso2": "MZ",
-      "iso3": "MOZ"
+      "iso2": "SE",
+      "iso3": "SWE"
     },
     {
       "name": "Myanmar",
-      "iso2": "MM",
-      "iso3": "MMR"
+      "iso2": "CH",
+      "iso3": "CHE"
     },
     {
       "name": "Namibia",
-      "iso2": "NA",
-      "iso3": "NAM"
+      "iso2": "SY",
+      "iso3": "SYR"
     },
     {
       "name": "Nauru",
-      "iso2": "NR",
-      "iso3": "NRU"
+      "iso2": "TW",
+      "iso3": "TWN"
     },
     {
       "name": "Nepal",
-      "iso2": "NP",
-      "iso3": "NPL"
+      "iso2": "TW",
+      "iso3": "TWN"
     },
     {
       "name": "Netherlands Antilles",
-      "iso2": "AN",
-      "iso3": "ANT"
+      "iso2": "TJ",
+      "iso3": "TJK"
     },
     {
       "name": "New Caledonia",
-      "iso2": "NC",
-      "iso3": "NCL"
+      "iso2": "TZ",
+      "iso3": "TZA"
     },
     {
       "name": "Nicaragua",
-      "iso2": "NI",
-      "iso3": "NIC"
+      "iso2": "TH",
+      "iso3": "THA"
     },
     {
       "name": "Niger",
-      "iso2": "NE",
-      "iso3": "NER"
+      "iso2": "TL",
+      "iso3": "TLS"
     },
     {
       "name": "Nigeria",
-      "iso2": "NG",
-      "iso3": "NGA"
+      "iso2": "TG",
+      "iso3": "TGO"
     },
     {
       "name": "Niue",
-      "iso2": "NU",
-      "iso3": "NIU"
+      "iso2": "TK",
+      "iso3": "TKL"
     },
     {
       "name": "Norfolk Island",
-      "iso2": "NF",
-      "iso3": "NFK"
+      "iso2": "TO",
+      "iso3": "TON"
     },
     {
       "name": "Northern Mariana Islands",
-      "iso2": "MP",
-      "iso3": "MNP"
+      "iso2": "TT",
+      "iso3": "TTO"
     },
     {
       "name": "Norway",
-      "iso2": "NO",
-      "iso3": "NOR"
+      "iso2": "TN",
+      "iso3": "TUN"
     },
     {
       "name": "Oman",
-      "iso2": "OM",
-      "iso3": "OMN"
+      "iso2": "TR",
+      "iso3": "TUR"
     },
     {
       "name": "Pakistan",
-      "iso2": "PK",
-      "iso3": "PAK"
+      "iso2": "TM",
+      "iso3": "TKM"
     },
     {
       "name": "Palau",
-      "iso2": "PW",
-      "iso3": "PLW"
+      "iso2": "TC",
+      "iso3": "TCA"
     },
     {
       "name": "Palestinian Territory",
-      "iso2": "PS",
-      "iso3": "PSE"
+      "iso2": "TV",
+      "iso3": "TUV"
     },
     {
       "name": "Panama",
-      "iso2": "PA",
-      "iso3": "PAN"
+      "iso2": "UG",
+      "iso3": "UGA"
     },
     {
       "name": "Papua New Guinea",
-      "iso2": "PG",
-      "iso3": "PNG"
+      "iso2": "UA",
+      "iso3": "UKR"
     },
     {
       "name": "Paraguay",
-      "iso2": "PY",
-      "iso3": "PRY"
+      "iso2": "AE",
+      "iso3": "ARE"
     },
     {
       "name": "Peru",
-      "iso2": "PE",
-      "iso3": "PER"
+      "iso2": "GB",
+      "iso3": "GBR"
     },
     {
       "name": "Philippines",
-      "iso2": "PH",
-      "iso3": "PHL"
+      "iso2": "UM",
+      "iso3": "UMI"
     },
     {
       "name": "Pitcairn Islands",
-      "iso2": "PN",
-      "iso3": "PCN"
+      "iso2": "VI",
+      "iso3": "VIR"
     },
     {
       "name": "Poland",
@@ -1031,6 +1046,11 @@
       "iso3": "SGS"
     },
     {
+      "name": "South Sudan",
+      "iso2": "SS",
+      "iso3": "SSD"
+    },
+    {
       "name": "Spain",
       "iso2": "ES",
       "iso3": "ESP"
@@ -1061,6 +1081,11 @@
       "iso3": "SWZ"
     },
     {
+      "name": "Eswatini",
+      "iso2": "SZ",
+      "iso3": "SWZ"
+    },
+    {
       "name": "Sweden",
       "iso2": "SE",
       "iso3": "SWE"
@@ -1077,6 +1102,11 @@
     },
     {
       "name": "Taiwan",
+      "iso2": "TW",
+      "iso3": "TWN"
+    },
+    {
+      "name": "Republic of China (Taiwan)",
       "iso2": "TW",
       "iso3": "TWN"
     },
@@ -1126,7 +1156,7 @@
       "iso3": "TUN"
     },
     {
-      "name": "Turkey",
+      "name": "Türkiye",
       "iso2": "TR",
       "iso3": "TUR"
     },
@@ -1159,6 +1189,11 @@
       "name": "United Arab Emirates",
       "iso2": "AE",
       "iso3": "ARE"
+    },
+    {
+      "name": "United Kingdom",
+      "iso2": "GB",
+      "iso3": "GBR"
     },
     {
       "name": "United States Minor Outlying Islands",
@@ -1213,7 +1248,7 @@
     {
       "name": "Kosovo",
       "iso2": "XK",
-      "iso3": "XKX"
+      "iso3": "XKS"
     },
     {
       "name": "Zambia",
@@ -1237,8 +1272,13 @@
     },
     {
       "name": "Free City of Danzig",
-      "iso2": "XZ",
-      "iso3": "XZZ"
+      "iso2": "",
+      "iso3": ""
+    },
+    {
+      "name": "Rhodesia",
+      "iso2": "RH",
+      "iso3": "RHO"
     },
     {
       "name": "Yugoslavia",
@@ -1247,23 +1287,28 @@
     },
     {
       "name": "Tristan da Cunha",
-      "iso2": "TA",
-      "iso3": "TAA"
+      "iso2": "",
+      "iso3": ""
     },
     {
       "name": "European Union",
-      "iso2": "EU",
-      "iso3": "EUE"
+      "iso2": "",
+      "iso3": ""
     },
     {
-      "name": "Tristan da Cunha",
-      "iso2": "TR",
-      "iso3": "TAA"
+      "name": "Czechoslovakia",
+      "iso2": "CS",
+      "iso3": "CSK"
     },
     {
-      "name": "Rhodesia",
-      "iso2": "RH",
-      "iso3": "RHO"
+      "name": "Palestine (British Mandate)",
+      "iso2": "",
+      "iso3": ""
+    },
+    {
+      "name": "British India",
+      "iso2": "",
+      "iso3": ""
     }
   ]
 }

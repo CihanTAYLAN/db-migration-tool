@@ -5,6 +5,8 @@ Handles data format conversions and transformations for migration.
 */
 
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
 const logger = require('../../logger');
 
 class DataTransformer {
@@ -19,48 +21,8 @@ class DataTransformer {
             10: 3.5, 8: 3, 6: 2.5, 4: 2, 3: 1.5, 2: 1.5, 1: 1
         };
 
-        // Country mapping from source to target - expanded from countries-data.json
-        this.countryMapping = {
-            'Australia': 'AU',
-            'Great Britain': 'GB',
-            'Canada': 'CA',
-            'United States of America': 'US',
-            'United States': 'US',
-            'United Kingdom': 'GB',
-            'Fiji': 'FJ',
-            'Germany': 'DE',
-            'South Africa': 'ZA',
-            'Mexico': 'MX',
-            'India': 'IN',
-            'Netherlands': 'NL',
-            'New Zealand': 'NZ',
-            'Isle of Man': 'IM',
-            'Saudi Arabia': 'SA',
-            // Additional countries from source data
-            'Switzerland': 'CH',
-            'France': 'FR',
-            'Austria': 'AT',
-            'Bahamas': 'BS',
-            'Liechtenstein': 'LI',
-            'Peru': 'PE',
-            'China': 'CN',
-            'Panama': 'PA',
-            'Iran': 'IR',
-            'Albania': 'AL',
-            'Belgium': 'BE',
-            'Yugoslavia': 'YU',
-            'Russia': 'RU',
-            'Tristan da Cunha': 'TA',
-            'European Union': 'EU',
-            'Cameroon': 'CM',
-            'Free City of Danzig': 'XZ',
-            'Niue': 'NU',
-            'Bolivia': 'BO',
-            'Italy': 'IT',
-            'Spain': 'ES',
-            'Rhodesia': 'RH',
-            'Cocos (Keeling) Islands': 'CC',
-        };
+        // Country mapping from source to target - loaded from countries-data.json
+        this.countryMapping = this.loadCountryMapping();
 
         // Cache for certificate provider lookups (providerName -> providerId)
         this.certificateProviderCache = new Map();
@@ -514,6 +476,51 @@ class DataTransformer {
         return null;
     }
 
+    loadCountryMapping() {
+        try {
+            const countriesFilePath = path.join(__dirname, '../config/countries-data.json');
+            const countriesData = fs.readFileSync(countriesFilePath, 'utf8');
+            const data = JSON.parse(countriesData);
+
+            // Handle both direct array format and object with countries array
+            let countries;
+            if (Array.isArray(data)) {
+                countries = data;
+            } else if (data && Array.isArray(data.countries)) {
+                countries = data.countries;
+            } else {
+                logger.error('countries-data.json does not contain a countries array');
+                throw new Error('Invalid countries data format');
+            }
+
+            // Create name -> iso2 mapping
+            const countryMapping = {};
+            for (const country of countries) {
+                if (country && country.name && country.iso2) {
+                    countryMapping[country.name] = country.iso2;
+                }
+            }
+
+            // Handle common variations not in the JSON
+            // These are based on existing hard-coded mappings
+            countryMapping['United States'] = 'US'; // JSON only has "United States of America"
+
+            logger.debug(`Loaded ${Object.keys(countryMapping).length} countries from countries-data.json`);
+            return countryMapping;
+        } catch (error) {
+            logger.error('Failed to load country mapping from countries-data.json', { error: error.message });
+            // Fallback to minimal mapping
+            return {
+                'Australia': 'AU',
+                'Canada': 'CA',
+                'United States': 'US',
+                'United Kingdom': 'GB',
+                'Germany': 'DE',
+                'France': 'FR'
+            };
+        }
+    }
+
     // Batch transformation methods
     transformCategories(categories, defaultLanguageId) {
         const transformedCategories = [];
@@ -531,6 +538,10 @@ class DataTransformer {
     }
 
     async transformProducts(products, defaultLanguageId) {
+        if (!Array.isArray(products)) {
+            throw new Error('products parameter must be an array');
+        }
+
         const transformedProducts = [];
         const transformedTranslations = [];
 

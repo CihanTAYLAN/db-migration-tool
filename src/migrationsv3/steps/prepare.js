@@ -101,7 +101,7 @@ class PrepareStep {
             // Load countries data from JSON file
             const fs = require('fs');
             const path = require('path');
-            const countriesData = JSON.parse(fs.readFileSync(path.join(__dirname, '../config/countries-data-v2.json'), 'utf8'));
+            const countriesData = JSON.parse(fs.readFileSync(path.join(__dirname, '../config/countries-data.json'), 'utf8'));
 
             logger.info(`Loaded ${countriesData.countries.length} countries from JSON data`);
 
