@@ -596,7 +596,7 @@ class OrdersStep {
             'canceled': 'CANCELED',
             'pending': 'PENDING',
             'paid_to_ship_later': 'ON_HOLD',
-            'complete': 'COMPLETE',
+            'complete': 'SHIPPED',
             'closed': 'CANCELED',
         };
 
