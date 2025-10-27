@@ -7,7 +7,12 @@
     },
     {
       "name": "Great Britain",
-      "iso2": "GB",
+      "iso2": "UK",
+      "iso3": "GBR"
+    },
+    {
+      "name": "United Kingdom",
+      "iso2": "UK",
       "iso3": "GBR"
     },
     {

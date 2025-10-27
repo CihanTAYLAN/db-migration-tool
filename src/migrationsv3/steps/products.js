@@ -367,7 +367,7 @@ class ProductsStep {
                 cpet_coin.value as coin_number,
                 cpevs_grade_prefix.value as grade_prefix,
                 cped_grade_value.value as grade_value,
-                cpevs_grade_suffix.value as grade_suffix,
+                cpet_grade_suffix.value as grade_suffix,
                 cpf.year,
                 cpf.country,
                 cpf.country_value,
@@ -396,7 +396,7 @@ class ProductsStep {
             LEFT JOIN catalog_product_entity_varchar cpevs_country_manuf ON cpe.entity_id = cpevs_country_manuf.entity_id AND cpevs_country_manuf.attribute_id = 114 AND cpevs_country_manuf.store_id = 0
             LEFT JOIN catalog_product_entity_varchar cpevs_grade_prefix ON cpe.entity_id = cpevs_grade_prefix.entity_id AND cpevs_grade_prefix.attribute_id = 135 AND cpevs_grade_prefix.store_id = 0
             LEFT JOIN catalog_product_entity_decimal cped_grade_value ON cpe.entity_id = cped_grade_value.entity_id AND cped_grade_value.attribute_id = 148 AND cped_grade_value.store_id = 0
-            LEFT JOIN catalog_product_entity_varchar cpevs_grade_suffix ON cpe.entity_id = cpevs_grade_suffix.entity_id AND cpevs_grade_suffix.attribute_id = 153 AND cpevs_grade_suffix.store_id = 0
+            LEFT JOIN catalog_product_entity_text cpet_grade_suffix ON cpe.entity_id = cpet_grade_suffix.entity_id AND cpet_grade_suffix.attribute_id = 153 AND cpet_grade_suffix.store_id = 0
             LEFT JOIN catalog_product_entity_int cpei_cert_type ON cpe.entity_id = cpei_cert_type.entity_id AND cpei_cert_type.attribute_id = 147 AND cpei_cert_type.store_id = 0
             LEFT JOIN catalog_product_entity_int cpei_archived ON cpe.entity_id = cpei_archived.entity_id AND cpei_archived.attribute_id = 144 AND cpei_archived.store_id = 0
             LEFT JOIN catalog_product_entity_int cpei_status ON cpe.entity_id = cpei_status.entity_id AND cpei_status.attribute_id = 97 AND cpei_status.store_id = 0
@@ -430,7 +430,7 @@ class ProductsStep {
             GROUP BY cpe.entity_id, cpe.sku, cpevs_name.value, cped.value, cpf.name, cpf.price, cpf.description, cpf.short_description,
                      cpf.image, cpf.url_key, cpe.created_at, cpe.updated_at, cpevs_meta_title.value,
                      cpevs_meta_desc.value, cpet_cert.value, cpet_coin.value, cpet_desc.value, cpevs_country_manuf.value, cpevs_grade_prefix.value,
-                     cped_grade_value.value, cpevs_grade_suffix.value, cpf.year, cpf.country, cpf.country_value, eaov_country.value, cpei_cert_type.value, sold_dates.first_sale_date, sold_prices.last_sold_price, cpev_sort.value, cped_sold_on.value, cped_sold_price.value, cpei_status.value, cpei_visibility.value, cpet_xero_sale.value
+                     cped_grade_value.value, cpet_grade_suffix.value, cpf.year, cpf.country, cpf.country_value, eaov_country.value, cpei_cert_type.value, sold_dates.first_sale_date, sold_prices.last_sold_price, cpev_sort.value, cped_sold_on.value, cped_sold_price.value, cpei_status.value, cpei_visibility.value, cpet_xero_sale.value
             ORDER BY cpe.entity_id
         `;
 
