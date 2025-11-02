@@ -33,20 +33,24 @@ class TranslationStep {
             // 1. Get all languages supported by the system
             const languages = await this.getTargetLanguages();
 
-            // 2. Batch translate categories
+            // 2. Batch translate contents first
+            logger.info(`Starting content translation for ${languages.length} languages`);
+            const contentResult = await this.translateContents(languages);
+
+            // 3. Batch translate categories
             logger.info(`Starting category translation for ${languages.length} languages`);
             const categoryResult = await this.translateCategories(languages);
 
-            // 3. Calculate parent slugs for all languages (after category translation)
+            // 4. Calculate parent slugs for all languages (after category translation)
             logger.info('Calculating parent slugs for all translated categories');
             await this.calculateParentSlugs();
 
-            // 4. Batch translate products
+            // 5. Batch translate products
             logger.info(`Starting product translation for ${languages.length} languages`);
             const productResult = await this.translateProducts(languages);
 
-            const totalSuccess = (categoryResult?.count || 0) + (productResult?.count || 0);
-            const totalFailed = (categoryResult?.failed || 0) + (productResult?.failed || 0);
+            const totalSuccess = (contentResult?.count || 0) + (categoryResult?.count || 0) + (productResult?.count || 0);
+            const totalFailed = (contentResult?.failed || 0) + (categoryResult?.failed || 0) + (productResult?.failed || 0);
 
             logger.success(`Global translation completed: ${totalSuccess} translations created, ${totalFailed} failed`);
 
@@ -195,19 +199,30 @@ class TranslationStep {
                     }
 
                     try {
-                        // Check if translation already exists and has meaningful content
+                        // Check if translation already exists and has meaningful content for ALL fields
                         const existingTranslation = await this.targetDb.query(`
-                            SELECT id, title FROM category_translations
+                            SELECT title, description, meta_title, meta_description, meta_keywords
+                            FROM category_translations
                             WHERE category_id = $1 AND language_id = $2
                             LIMIT 1
                         `, [category.category_id, language.id]);
 
-                        // Skip if translation exists and has non-empty title (avoid unnecessary AWS cost)
-                        if (existingTranslation.length > 0 && existingTranslation[0].title &&
-                            existingTranslation[0].title.trim() !== '' &&
-                            existingTranslation[0].title.trim() !== category.title?.trim()) { // Different from source
-                            logger.debug(`Skipping translation for category ${category.category_id} to ${language.code} - already exists`);
-                            continue;
+                        // Skip if translation exists and has all meaningful content (avoid unnecessary AWS cost)
+                        if (existingTranslation.length > 0) {
+                            const existing = existingTranslation[0];
+                            const hasAllTranslatedContent =
+                                existing.title?.trim() &&
+                                existing.description?.trim() &&
+                                existing.meta_title?.trim() &&
+                                existing.meta_description?.trim() &&
+                                existing.meta_keywords?.trim() &&
+                                // Ensure translations are different from source (not just copied)
+                                existing.title.trim() !== category.title?.trim();
+
+                            if (hasAllTranslatedContent) {
+                                logger.debug(`Skipping translation for category ${category.category_id} to ${language.code} - all fields already translated`);
+                                continue;
+                            }
                         }
 
                         // Prepare content for translation
@@ -372,19 +387,31 @@ class TranslationStep {
                     }
 
                     try {
-                        // Check if translation already exists and has meaningful content
+                        // Check if translation already exists and has meaningful content for ALL fields
                         const existingTranslation = await this.targetDb.query(`
-                            SELECT id, title FROM product_translations
+                            SELECT title, description, short_description, meta_title, meta_description, meta_keywords
+                            FROM product_translations
                             WHERE product_id = $1 AND language_id = $2
                             LIMIT 1
                         `, [product.product_id, language.id]);
 
-                        // Skip if translation exists and has non-empty title (avoid unnecessary AWS cost)
-                        if (existingTranslation.length > 0 && existingTranslation[0].title &&
-                            existingTranslation[0].title.trim() !== '' &&
-                            existingTranslation[0].title.trim() !== product.title?.trim()) { // Different from source
-                            logger.debug(`Skipping translation for product ${product.product_id} to ${language.code} - already exists`);
-                            continue;
+                        // Skip if translation exists and has all meaningful content (avoid unnecessary AWS cost)
+                        if (existingTranslation.length > 0) {
+                            const existing = existingTranslation[0];
+                            const hasAllTranslatedContent =
+                                existing.title?.trim() &&
+                                existing.description?.trim() &&
+                                existing.short_description?.trim() &&
+                                existing.meta_title?.trim() &&
+                                existing.meta_description?.trim() &&
+                                existing.meta_keywords?.trim() &&
+                                // Ensure translations are different from source (not just copied)
+                                existing.title.trim() !== product.title?.trim();
+
+                            if (hasAllTranslatedContent) {
+                                logger.debug(`Skipping translation for product ${product.product_id} to ${language.code} - all fields already translated`);
+                                continue;
+                            }
                         }
 
                         // Prepare content for translation
@@ -482,6 +509,192 @@ class TranslationStep {
                     meta_title, meta_description, meta_keywords,
                     product_id, language_id, created_at, updated_at
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            `, Object.values(translationRecord));
+        }
+    }
+
+    async translateContents(languages) {
+        logger.info('Fetching contents for translation...');
+
+        // Get all contents with their default language content (from source data)
+        // Contents are migrated to content_translations table in default language,
+        // so we fetch from there for translation
+        const contentsQuery = `
+            SELECT
+                ct.content_id,
+                ct.title,
+                ct.description,
+                ct.meta_title,
+                ct.meta_description,
+                ct.meta_keywords
+            FROM contents c
+            INNER JOIN content_translations ct ON c.id = ct.content_id AND ct.language_id = $1
+            WHERE c.published = true AND c.is_allowed = true
+            ORDER BY c.id
+        `;
+
+        const contents = await this.targetDb.query(contentsQuery, [this.defaultLanguageId]);
+        logger.info(`Found ${contents.length} contents to translate`);
+
+        if (contents.length === 0) {
+            logger.info('No contents found for translation');
+            return { success: true, count: 0, failed: 0 };
+        }
+
+        // Process contents in batches
+        const result = await this.batchProcessor.process(contents, async (batch) => {
+            return await this.processContentBatch(batch, languages);
+        });
+
+        logger.info(`Content translation completed: ${result.success} success, ${result.failed} failed`);
+        return result;
+    }
+
+    async processContentBatch(contents, languages) {
+        try {
+            let successCount = 0;
+            let failedCount = 0;
+
+            // Get the default language (English) for translation source
+            const defaultLanguage = languages.find(lang => lang.id === this.defaultLanguageId);
+            if (!defaultLanguage) {
+                logger.error('Default language not found in language list');
+                return { success: 0, failed: contents.length };
+            }
+
+            // Process each content for each language
+            for (const content of contents) {
+                // Skip contents without English content
+                if (!content.title || content.title.trim() === '') {
+                    logger.debug(`Skipping content ${content.content_id} - no English title`);
+                    continue;
+                }
+
+                // Process translations for each language
+                for (const language of languages) {
+                    // Skip default language (English) - it's already the source
+                    if (language.id === this.defaultLanguageId) {
+                        continue;
+                    }
+
+                    try {
+                        // Check if translation already exists and has meaningful content for ALL fields
+                        const existingTranslation = await this.targetDb.query(`
+                            SELECT title, description, meta_title, meta_description, meta_keywords
+                            FROM content_translations
+                            WHERE content_id = $1 AND language_id = $2
+                            LIMIT 1
+                        `, [content.content_id, language.id]);
+
+                        // Skip if translation exists and has all meaningful content (avoid unnecessary AWS cost)
+                        if (existingTranslation.length > 0) {
+                            const existing = existingTranslation[0];
+                            const hasAllTranslatedContent =
+                                existing.title?.trim() &&
+                                existing.description?.trim() &&
+                                existing.meta_title?.trim() &&
+                                existing.meta_description?.trim() &&
+                                existing.meta_keywords?.trim() &&
+                                // Ensure translations are different from source (not just copied)
+                                existing.title.trim() !== content.title?.trim();
+
+                            if (hasAllTranslatedContent) {
+                                logger.debug(`Skipping translation for content ${content.content_id} to ${language.code} - all fields already translated`);
+                                continue;
+                            }
+                        }
+
+                        // Prepare content for translation
+                        const translationData = {
+                            title: content.title || '',
+                            description: content.description || '',
+                            meta_title: content.meta_title || '',
+                            meta_description: content.meta_description || '',
+                            meta_keywords: content.meta_keywords || ''
+                        };
+
+                        logger.debug(`Translating content ${content.content_id} (${content.title}) from ${defaultLanguage.code} to ${language.code}`);
+
+                        // Call translation API
+                        const translatedData = await this.translateContent(translationData, defaultLanguage.code, language.code);
+
+                        if (!translatedData.title || translatedData.title.trim() === '') {
+                            logger.warning(`Translation failed for content ${content.content_id} to ${language.code} - empty title result`);
+                            failedCount++;
+                            continue;
+                        }
+
+                        // Insert or update content translation
+                        await this.insertContentTranslation(content.content_id, language, translatedData);
+                        successCount++;
+
+                        logger.debug(`Successfully translated content ${content.content_id} to ${language.code}`);
+
+                    } catch (error) {
+                        logger.warning(`Failed to translate content ${content.content_id} to ${language.code}`, {
+                            error: error.message,
+                            content_id: content.content_id,
+                            content_title: content.title,
+                            from_lang: defaultLanguage.code,
+                            to_lang: language.code
+                        });
+                        failedCount++;
+                    }
+                }
+            }
+
+            return { success: successCount, failed: failedCount };
+
+        } catch (error) {
+            logger.error('Failed to process content translation batch', {
+                error: error.message,
+                contentCount: contents.length,
+                languageCount: languages.length
+            });
+            return { success: 0, failed: contents.length * (languages.length - 1) }; // -1 for default language
+        }
+    }
+
+    async insertContentTranslation(contentId, language, translationData) {
+        const translationRecord = {
+            id: require('uuid').v4(),
+            title: translationData.title,
+            description: translationData.description,
+            slug: this.slugify(translationData.title), // Generate slug from translated title
+            meta_title: translationData.meta_title,
+            meta_description: translationData.meta_description,
+            meta_keywords: translationData.meta_keywords,
+            content_id: contentId,
+            language_id: language.id,
+            created_at: new Date(),
+            updated_at: new Date()
+        };
+
+        // Check if translation already exists
+        const existing = await this.targetDb.query(
+            'SELECT id FROM content_translations WHERE content_id = $1 AND language_id = $2',
+            [contentId, language.id]
+        );
+
+        if (existing.length > 0) {
+            // Update existing
+            await this.targetDb.query(`
+                UPDATE content_translations SET
+                    title = $1, description = $2, slug = $3, meta_title = $4,
+                    meta_description = $5, meta_keywords = $6, updated_at = NOW()
+                WHERE id = $7
+            `, [
+                translationRecord.title, translationRecord.description, translationRecord.slug,
+                translationRecord.meta_title, translationRecord.meta_description,
+                translationRecord.meta_keywords, existing[0].id
+            ]);
+        } else {
+            // Insert new
+            await this.targetDb.query(`
+                INSERT INTO content_translations (
+                    id, title, slug, description, meta_title, meta_description, meta_keywords,
+                    content_id, language_id, created_at, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             `, Object.values(translationRecord));
         }
     }
