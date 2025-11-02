@@ -93,7 +93,7 @@ class CertCoinCategoriesStep {
     for (const [certCoinKey, rows] of certCoinGroups) {
 
       try {
-        console.log(certCoinKey);
+        logger.debug(`Processing cert-coin combination: ${certCoinKey}`);
         const [certNumber, coinNumber] = certCoinKey.split('_');
 
         // Find product by cert-number and coin-number
@@ -147,6 +147,8 @@ class CertCoinCategoriesStep {
     if (csvRow['main-category-2']) categories.push(csvRow['main-category-2']);
     if (csvRow['sub-category-2']) categories.push(csvRow['sub-category-2']);
 
+    logger.debug(`Product ${product.id}: Mapping categories: ${categories.join(', ')}`);
+
     if (categories.length === 0) {
       logger.debug(`No categories found in CSV row for product ${product.id}`);
       return;
@@ -159,7 +161,7 @@ class CertCoinCategoriesStep {
       if (categoryId) {
         categoryIds.push(categoryId);
       } else {
-        logger.warning(`Category not found for slug: ${categorySlug}`);
+        logger.warning(`Category not found for slug: ${categorySlug} (product ${product.id})`);
       }
     }
 
@@ -186,7 +188,7 @@ class CertCoinCategoriesStep {
             SELECT c.id
             FROM categories c
             JOIN category_translations ct ON c.id = ct.category_id
-            WHERE ct.slug = $1 AND ct.language_id = $2
+            WHERE (ct.slug = $1 OR ct.parent_slugs = $1) AND ct.language_id = $2
             LIMIT 1
         `;
 
