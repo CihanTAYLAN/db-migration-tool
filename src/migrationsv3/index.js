@@ -192,7 +192,7 @@ class MigrationV3 {
     }
 
     // Run specific step
-    async runStep(stepName) {
+    async runStep(stepName, domain = null) {
         try {
             logger.info(`Running specific step: ${stepName}`);
             await this.connectDatabases();
@@ -293,6 +293,11 @@ class MigrationV3 {
                 case 'translation':
                     const translationStep = new TranslationStep(this.targetDb, config, this.context.defaultLanguageId);
                     return await translationStep.run();
+
+                case 'replaceImageUrls':
+                    const ReplaceImageUrlsStep = require('./steps/replace-image-urls');
+                    const replaceImageUrlsStep = new ReplaceImageUrlsStep(this.targetDb, config, domain);
+                    return await replaceImageUrlsStep.run();
 
                 default:
                     throw new Error(`Unknown step: ${stepName}`);

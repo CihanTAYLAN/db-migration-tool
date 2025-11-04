@@ -278,9 +278,9 @@ program
     });
 
 program
-    .command('migrate:v3:step <stepName>')
-    .description('Run specific Migration V3 step (prepare, blog_posts, categories, products, merge, customers, orders)')
-    .action(async (stepName) => {
+    .command('migrate:v3:step <stepName> [domain]')
+    .description('Run specific Migration V3 step (prepare, blog_posts, categories, products, merge, customers, orders, replaceImageUrls)')
+    .action(async (stepName, domain) => {
         try {
             logger.info(`Running Migration V3 step: ${stepName}`);
             const MigrationV3 = require('../migrationsv3');
@@ -290,7 +290,7 @@ program
                 process.env.TARGET_DATABASE_URL,
                 process.env.TARGET_DB_TYPE
             );
-            const result = await migrationInstance.runStep(stepName);
+            const result = await migrationInstance.runStep(stepName, domain);
             logger.success(`Migration V3 step ${stepName} completed successfully`);
         } catch (error) {
             logger.error(`Migration V3 step ${stepName} failed`, { error: error.message });

@@ -77,6 +77,12 @@ const config = {
             description: 'Batch translation of all categories and products to all available languages',
             batchSize: 100,
             parallelLimit: 2
+        },
+        replaceImageUrls: {
+            enabled: false,
+            description: 'Replace image URLs for production domain in product_images table',
+            batchSize: 1000,
+            parallelLimit: 1
         }
     },
 
