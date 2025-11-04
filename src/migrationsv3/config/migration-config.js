@@ -83,6 +83,12 @@ const config = {
             description: 'Replace image URLs for production domain in product_images table',
             batchSize: 1000,
             parallelLimit: 1
+        },
+        updateProducts: {
+            enabled: false,
+            description: 'Update product fields (is_active, status, quantity, price, sold_date, archived_at, sold_price) from source database',
+            batchSize: 100,
+            parallelLimit: 1
         }
     },
 

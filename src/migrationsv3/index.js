@@ -19,6 +19,7 @@ const UpdateMasterCategoryIdsStep = require('./steps/update-master-category-ids'
 const CustomersStep = require('./steps/customers');
 const OrdersStep = require('./steps/orders');
 const TranslationStep = require('./steps/translation');
+const UpdateProductsStep = require('./steps/update-products');
 
 class MigrationV3 {
     constructor(sourceUrl, sourceType, targetUrl, targetType) {
@@ -168,6 +169,20 @@ class MigrationV3 {
                 results.orders = await ordersStep.run();
             }
 
+            // Step 9: Update Products
+            // Update product fields from source database (manual step)
+            if (config.steps.updateProducts.enabled) {
+                logger.info('🔄 Step 9: Update Products');
+                const updateProductsStep = new UpdateProductsStep(
+                    this.sourceDb,
+                    this.targetDb,
+                    config,
+                    this.context.eavMapper,
+                    this.context.defaultLanguageId
+                );
+                results.updateProducts = await updateProductsStep.run();
+            }
+
             // Step 10: Translation
             // Batch translation of all categories and products to all supported languages
             if (config.steps.translation.enabled) {
@@ -298,6 +313,16 @@ class MigrationV3 {
                     const ReplaceImageUrlsStep = require('./steps/replace-image-urls');
                     const replaceImageUrlsStep = new ReplaceImageUrlsStep(this.targetDb, config, domain);
                     return await replaceImageUrlsStep.run();
+
+                case 'updateProducts':
+                    const updateProductsStep = new UpdateProductsStep(
+                        this.sourceDb,
+                        this.targetDb,
+                        config,
+                        this.context.eavMapper,
+                        this.context.defaultLanguageId
+                    );
+                    return await updateProductsStep.run();
 
                 default:
                     throw new Error(`Unknown step: ${stepName}`);
