@@ -32,47 +32,50 @@ class ReplaceImageUrlsStep {
         logger.info(`Starting replace image URLs step for domain: ${this.domain}`);
 
         try {
-            // Get current image URLs to preview what will be changed
-            const existingImages = await this.targetDb.query(
-                'SELECT id, image_url FROM product_images WHERE image_url IS NOT NULL'
-            );
+            let totalProcessed = 0;
+            let totalUpdated = 0;
 
-            if (existingImages.length === 0) {
-                logger.warning('No product images found to update');
-                return { success: true, count: 0, updated: 0 };
+            // Define all tables and their image columns to process
+            const imageTables = [
+                {
+                    table: 'product_images',
+                    column: 'image_url',
+                    description: 'Product images'
+                },
+                {
+                    table: 'contents',
+                    column: 'image',
+                    description: 'Content images'
+                },
+                {
+                    table: 'certificate_providers',
+                    column: 'image',
+                    description: 'Certificate provider images'
+                },
+                {
+                    table: 'certificate_provider_badges',
+                    column: 'icon',
+                    description: 'Certificate provider badge icons'
+                }
+            ];
+
+            // Process each table
+            for (const tableInfo of imageTables) {
+                logger.info(`Processing ${tableInfo.description}...`);
+
+                const result = await this.processTable(tableInfo);
+                totalProcessed += result.processed;
+                totalUpdated += result.updated;
+
+                logger.info(`${tableInfo.description}: ${result.updated} URLs updated`);
             }
 
-            logger.info(`Found ${existingImages.length} product images to process`);
-
-            // Analyze current URLs to determine replacement patterns
-            const { urlsToUpdate, oldDomain } = await this.analyzeUrls(existingImages);
-
-            if (urlsToUpdate.length === 0) {
-                logger.info('No URLs need to be updated - all URLs already use the target domain');
-                return { success: true, count: existingImages.length, updated: 0 };
-            }
-
-            logger.info(`Found ${urlsToUpdate.length} URLs to update from domain: ${oldDomain}`);
-
-            // Preview changes
-            logger.info('Preview of changes:');
-            urlsToUpdate.slice(0, 5).forEach(({ oldUrl, newUrl }) => {
-                logger.info(`  ${oldUrl} -> ${newUrl}`);
-            });
-
-            if (urlsToUpdate.length > 5) {
-                logger.info(`  ... and ${urlsToUpdate.length - 5} more URLs`);
-            }
-
-            // Update URLs in batches
-            const result = await this.updateImageUrls(urlsToUpdate);
-
-            logger.success(`Replace image URLs step completed: ${result.updated} URLs updated`);
+            logger.success(`Replace image URLs step completed: ${totalUpdated} total URLs updated`);
 
             return {
                 success: true,
-                count: existingImages.length,
-                updated: result.updated
+                count: totalProcessed,
+                updated: totalUpdated
             };
 
         } catch (error) {
@@ -81,12 +84,17 @@ class ReplaceImageUrlsStep {
         }
     }
 
-    async analyzeUrls(images) {
+    async analyzeUrls(images, columnName) {
         const urlsToUpdate = [];
         let oldDomain = null;
 
         for (const image of images) {
-            const currentUrl = image.image_url;
+            const currentUrl = image[columnName];
+
+            // Skip null/empty values
+            if (!currentUrl || currentUrl.trim() === '') {
+                continue;
+            }
 
             // Extract domain from current URL
             const currentDomain = this.extractDomain(currentUrl);
@@ -128,11 +136,37 @@ class ReplaceImageUrlsStep {
         }
     }
 
-    async updateImageUrls(urlsToUpdate) {
+    async processTable(tableInfo) {
+        try {
+            // Get current image URLs for this table
+            const query = `SELECT id, ${tableInfo.column} FROM ${tableInfo.table} WHERE ${tableInfo.column} IS NOT NULL AND ${tableInfo.column} != ''`;
+            const existingImages = await this.targetDb.query(query);
+
+            if (existingImages.length === 0) {
+                return { processed: 0, updated: 0 };
+            }
+
+            // Analyze current URLs to determine replacement patterns
+            const { urlsToUpdate, oldDomain } = await this.analyzeUrls(existingImages, tableInfo.column);
+
+            if (urlsToUpdate.length === 0) {
+                return { processed: existingImages.length, updated: 0 };
+            }
+
+            // Update URLs for this table
+            const result = await this.updateImageUrls(urlsToUpdate, tableInfo);
+
+            return { processed: existingImages.length, updated: result.updated };
+
+        } catch (error) {
+            logger.error(`Failed to process table ${tableInfo.table}`, { error: error.message });
+            return { processed: 0, updated: 0 };
+        }
+    }
+
+    async updateImageUrls(urlsToUpdate, tableInfo) {
         const batchSize = this.config.steps.replaceImageUrls.batchSize || 1000;
         let totalUpdated = 0;
-
-        logger.info(`Updating URLs in batches of ${batchSize}...`);
 
         // Use bulk update approach with CASE WHEN statements for better performance
         for (let i = 0; i < urlsToUpdate.length; i += batchSize) {
@@ -144,21 +178,19 @@ class ReplaceImageUrlsStep {
                 const whenClauses = batch.map(u => `WHEN '${u.id}' THEN '${u.newUrl.replace(/'/g, "''")}'`).join(' ');
 
                 const query = `
-                    UPDATE product_images
-                    SET image_url = CASE id ${whenClauses} END,
+                    UPDATE ${tableInfo.table}
+                    SET ${tableInfo.column} = CASE id ${whenClauses} END,
                         updated_at = NOW()
                     WHERE id IN (${ids.map(id => `'${id}'`).join(',')})
                 `;
 
-                logger.debug(`Executing bulk update query for ${batch.length} images`);
+                logger.debug(`Executing bulk update query for ${batch.length} images in ${tableInfo.table}`);
                 await this.targetDb.query(query);
 
                 totalUpdated += batch.length;
 
-                logger.info(`Progress: ${totalUpdated}/${urlsToUpdate.length} URLs updated (batch ${Math.floor(i/batchSize) + 1})`);
-
             } catch (error) {
-                logger.error(`Failed to update batch starting at index ${i}`, {
+                logger.error(`Failed to update batch starting at index ${i} in ${tableInfo.table}`, {
                     error: error.message,
                     batchSize: batch.length
                 });
@@ -168,12 +200,12 @@ class ReplaceImageUrlsStep {
                 for (const urlUpdate of batch) {
                     try {
                         await this.targetDb.query(
-                            'UPDATE product_images SET image_url = $1, updated_at = NOW() WHERE id = $2',
+                            `UPDATE ${tableInfo.table} SET ${tableInfo.column} = $1, updated_at = NOW() WHERE id = $2`,
                             [urlUpdate.newUrl, urlUpdate.id]
                         );
                         totalUpdated++;
                     } catch (individualError) {
-                        logger.error(`Failed to update URL for image ID ${urlUpdate.id}`, {
+                        logger.error(`Failed to update URL for ${tableInfo.table} ID ${urlUpdate.id}`, {
                             error: individualError.message,
                             oldUrl: urlUpdate.oldUrl,
                             newUrl: urlUpdate.newUrl
@@ -182,8 +214,6 @@ class ReplaceImageUrlsStep {
                 }
             }
         }
-
-        logger.info(`Completed URL updates: ${totalUpdated} successful, ${urlsToUpdate.length - totalUpdated} failed`);
 
         return { updated: totalUpdated };
     }
