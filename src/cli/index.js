@@ -298,4 +298,16 @@ program
         }
     });
 
+program
+    .command('migration:v3:list-steps')
+    .description('List all Migration V3 steps with descriptions')
+    .action(() => {
+        const config = require('../migrationsv3/config/migration-config');
+        logger.info('Migration V3 Steps:');
+        Object.entries(config.steps).forEach(([stepName, stepConfig]) => {
+            const status = stepConfig.enabled ? '[\x1b[32menabled\x1b[0m] ' : '[\x1b[31mdisabled\x1b[0m]';
+            console.log(`${status} \x1b[1;36m${stepName}\x1b[0m: ${stepConfig.description}`);
+        });
+    });
+
 program.parse();

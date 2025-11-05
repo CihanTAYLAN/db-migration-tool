@@ -2,7 +2,6 @@
   "name": "migration-cli",
   "version": "1.0.0",
   "description": "Flexible Database Migration CLI Tool",
-  "packageManager": "yarn@4.9.2",
   "bin": "./src/cli/index.js",
   "scripts": {
     "dev": "node src/cli/index.js",
