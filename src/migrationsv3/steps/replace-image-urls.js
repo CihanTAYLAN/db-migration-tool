@@ -141,15 +141,16 @@ class ReplaceImageUrlsStep {
             try {
                 // Create bulk update query using CASE WHEN for multiple updates in one query
                 const ids = batch.map(u => u.id);
-                const whenClauses = batch.map(u => `WHEN ${u.id} THEN '${u.newUrl.replace(/'/g, "''")}'`).join(' ');
+                const whenClauses = batch.map(u => `WHEN '${u.id}' THEN '${u.newUrl.replace(/'/g, "''")}'`).join(' ');
 
                 const query = `
                     UPDATE product_images
                     SET image_url = CASE id ${whenClauses} END,
                         updated_at = NOW()
-                    WHERE id IN (${ids.join(',')})
+                    WHERE id IN (${ids.map(id => `'${id}'`).join(',')})
                 `;
 
+                logger.debug(`Executing bulk update query for ${batch.length} images`);
                 await this.targetDb.query(query);
 
                 totalUpdated += batch.length;

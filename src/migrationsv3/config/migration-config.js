@@ -81,7 +81,7 @@ const config = {
         replaceImageUrls: {
             enabled: false,
             description: 'Replace image URLs for production domain in product_images table',
-            batchSize: 1000,
+            batchSize: 200,
             parallelLimit: 1
         },
         updateProducts: {
