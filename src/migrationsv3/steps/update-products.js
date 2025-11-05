@@ -66,34 +66,88 @@ class UpdateProductsStep {
     async fetchSourceProductUpdates() {
         logger.info('Fetching source product updates...');
 
+        // Build WHERE conditions dynamically based on config
+        let whereConditions = ['cpe.type_id = ?'];
+        let queryParams = [this.config.filters.productTypes[0]]; // 'simple'
+
+        // Add excluded product SKUs filter if configured
+        if (this.config.filters.excludedProductSkus && this.config.filters.excludedProductSkus.length > 0) {
+            const excludedSkus = this.config.filters.excludedProductSkus;
+            const placeholders = excludedSkus.map(() => '?').join(', ');
+            whereConditions.push(`cpe.sku NOT IN (${placeholders})`);
+            queryParams.push(...excludedSkus);
+
+            logger.info(`Excluding ${excludedSkus.length} products from migration: ${excludedSkus.join(', ')}`);
+        }
+
+        const whereClause = whereConditions.join(' AND ');
+
         const query = `
             SELECT
                 cpe.entity_id,
                 cpe.sku as product_sku,
-                cpf.price,
+                COALESCE(cpevs_name.value, cpf.name, cpe.sku) as name,
+                COALESCE(cped.value, cpf.price) as price,
+                COALESCE(cpet_desc.value, cpf.description) as description,
+                cpf.short_description as short_description,
+                cpf.image as image,
+                cpf.url_key as url_key,
                 cpe.created_at,
                 cpe.updated_at,
-                cpei_status.value as status,
-                cpei_visibility.value as visibility,
-                cped_sold_on.value as eav_sold_date,
-                cped_sold_price.value as eav_sold_price,
+                cpevs_meta_title.value as meta_title,
+                cpevs_meta_desc.value as meta_description,
+                cpet_cert.value as certification_number,
+                cpet_coin.value as coin_number,
+                cpevs_grade_prefix.value as grade_prefix,
+                cped_grade_value.value as grade_value,
+                cpet_grade_suffix.value as grade_suffix,
+                cpf.year,
+                cpf.country,
+                cpf.country_value,
+                cpevs_country_manuf.value as country_of_manufacture,
+                eaov_country.value as country_int,
+                cpei_cert_type.value as certification_type,
                 cpei_archived.value as archived_status,
                 sold_dates.first_sale_date as sold_date,
-                sold_prices.last_sold_price as last_sold_price
+                sold_prices.last_sold_price as last_sold_price,
+                cped_sold_on.value as eav_sold_date,
+                cped_sold_price.value as eav_sold_price,
+                cpev_sort.value as sort_string,
+                cpei_status.value as status,
+                cpei_visibility.value as visibility,
+                GROUP_CONCAT(DISTINCT ccp.category_id) as category_ids,
+                cpet_xero_sale.value as xero_sale_account
             FROM catalog_product_entity cpe
             LEFT JOIN catalog_product_flat_1 cpf ON cpe.entity_id = cpf.entity_id
+            LEFT JOIN catalog_product_entity_varchar cpevs_name ON cpe.entity_id = cpevs_name.entity_id AND cpevs_name.attribute_id = 73 AND cpevs_name.store_id = 0
+            LEFT JOIN catalog_product_entity_decimal cped ON cpe.entity_id = cped.entity_id AND cped.attribute_id = 77 AND cped.store_id = 0
+            LEFT JOIN catalog_product_entity_varchar cpevs_meta_title ON cpe.entity_id = cpevs_meta_title.entity_id AND cpevs_meta_title.attribute_id = 84 AND cpevs_meta_title.store_id = 0
+            LEFT JOIN catalog_product_entity_varchar cpevs_meta_desc ON cpe.entity_id = cpevs_meta_desc.entity_id AND cpevs_meta_desc.attribute_id = 86 AND cpevs_meta_desc.store_id = 0
+            LEFT JOIN catalog_product_entity_text cpet_cert ON cpe.entity_id = cpet_cert.entity_id AND cpet_cert.attribute_id = 138 AND cpet_cert.store_id = 0
+            LEFT JOIN catalog_product_entity_text cpet_coin ON cpe.entity_id = cpet_coin.entity_id AND cpet_coin.attribute_id = 142 AND cpet_coin.store_id = 0
+            LEFT JOIN catalog_product_entity_text cpet_desc ON cpe.entity_id = cpet_desc.entity_id AND cpet_desc.attribute_id = 75 AND cpet_desc.store_id = 0
+            LEFT JOIN catalog_product_entity_varchar cpevs_country_manuf ON cpe.entity_id = cpevs_country_manuf.entity_id AND cpevs_country_manuf.attribute_id = 114 AND cpevs_country_manuf.store_id = 0
+            LEFT JOIN catalog_product_entity_varchar cpevs_grade_prefix ON cpe.entity_id = cpevs_grade_prefix.entity_id AND cpevs_grade_prefix.attribute_id = 135 AND cpevs_grade_prefix.store_id = 0
+            LEFT JOIN catalog_product_entity_decimal cped_grade_value ON cpe.entity_id = cped_grade_value.entity_id AND cped_grade_value.attribute_id = 148 AND cped_grade_value.store_id = 0
+            LEFT JOIN catalog_product_entity_text cpet_grade_suffix ON cpe.entity_id = cpet_grade_suffix.entity_id AND cpet_grade_suffix.attribute_id = 153 AND cpet_grade_suffix.store_id = 0
+            LEFT JOIN catalog_product_entity_int cpei_cert_type ON cpe.entity_id = cpei_cert_type.entity_id AND cpei_cert_type.attribute_id = 147 AND cpei_cert_type.store_id = 0
+            LEFT JOIN catalog_product_entity_int cpei_archived ON cpe.entity_id = cpei_archived.entity_id AND cpei_archived.attribute_id = 144 AND cpei_archived.store_id = 0
             LEFT JOIN catalog_product_entity_int cpei_status ON cpe.entity_id = cpei_status.entity_id AND cpei_status.attribute_id = 97 AND cpei_status.store_id = 0
             LEFT JOIN catalog_product_entity_int cpei_visibility ON cpe.entity_id = cpei_visibility.entity_id AND cpei_visibility.attribute_id = 99 AND cpei_visibility.store_id = 0
-            LEFT JOIN catalog_product_entity_decimal cped_sold_on ON cpe.entity_id = cped_sold_on.entity_id AND cped_sold_on.attribute_id = (SELECT attribute_id FROM eav_attribute WHERE attribute_code = 'sold_on' AND entity_type_id = 4) AND cped_sold_on.store_id = 0
+            LEFT JOIN catalog_product_entity_datetime cped_sold_on ON cpe.entity_id = cped_sold_on.entity_id AND cped_sold_on.attribute_id = (SELECT attribute_id FROM eav_attribute WHERE attribute_code = 'sold_on' AND entity_type_id = 4) AND cped_sold_on.store_id = 0
             LEFT JOIN catalog_product_entity_decimal cped_sold_price ON cpe.entity_id = cped_sold_price.entity_id AND cped_sold_price.attribute_id = (SELECT attribute_id FROM eav_attribute WHERE attribute_code = 'sold_price' AND entity_type_id = 4) AND cped_sold_price.store_id = 0
-            LEFT JOIN catalog_product_entity_int cpei_archived ON cpe.entity_id = cpei_archived.entity_id AND cpei_archived.attribute_id = 144 AND cpei_archived.store_id = 0
+            LEFT JOIN catalog_product_entity_varchar cpev_sort ON cpe.entity_id = cpev_sort.entity_id AND cpev_sort.attribute_id = 141 AND cpev_sort.store_id = 0
+            LEFT JOIN catalog_product_entity_int cpei_country ON cpe.entity_id = cpei_country.entity_id AND cpei_country.attribute_id = 158 AND cpei_country.store_id = 0
+            LEFT JOIN eav_attribute_option_value eaov_country ON cpei_country.value = eaov_country.option_id AND eaov_country.store_id = 0
+            LEFT JOIN catalog_product_entity_text cpet_xero_sale ON cpe.entity_id = cpet_xero_sale.entity_id AND cpet_xero_sale.attribute_id = 188 AND cpet_xero_sale.store_id = 0
+            INNER JOIN catalog_category_product ccp ON cpe.entity_id = ccp.product_id
             LEFT JOIN (
                 SELECT
                     soi.product_id,
                     MIN(so.created_at) as first_sale_date
                 FROM sales_order_item soi
                 JOIN sales_order so ON soi.order_id = so.entity_id
-                WHERE so.status IN ('complete', 'a_complete')
+                WHERE so.status IN (${this.config.filters.orderStatuses.map(s => `'${s}'`).join(',')})
                 GROUP BY soi.product_id
             ) sold_dates ON cpe.entity_id = sold_dates.product_id
             LEFT JOIN (
@@ -102,14 +156,50 @@ class UpdateProductsStep {
                     MAX(soi.price) as last_sold_price
                 FROM sales_order_item soi
                 JOIN sales_order so ON soi.order_id = so.entity_id
-                WHERE so.status IN ('complete', 'a_complete')
+                WHERE so.status IN (${this.config.filters.orderStatuses.map(s => `'${s}'`).join(',')})
                 GROUP BY soi.product_id
             ) sold_prices ON cpe.entity_id = sold_prices.product_id
-            WHERE cpe.type_id = 'simple'
+            WHERE ${whereClause}
+            GROUP BY cpe.entity_id, cpe.sku, cpevs_name.value, cped.value, cpf.name, cpf.price, cpf.description, cpf.short_description,
+                      cpf.image, cpf.url_key, cpe.created_at, cpe.updated_at, cpevs_meta_title.value,
+                      cpevs_meta_desc.value, cpet_cert.value, cpet_coin.value, cpet_desc.value, cpevs_country_manuf.value, cpevs_grade_prefix.value,
+                      cped_grade_value.value, cpet_grade_suffix.value, cpf.year, cpf.country, cpf.country_value, eaov_country.value, cpei_cert_type.value, sold_dates.first_sale_date, sold_prices.last_sold_price, cpev_sort.value, cped_sold_on.value, cped_sold_price.value, cpei_status.value, cpei_visibility.value, cpet_xero_sale.value
             ORDER BY cpe.entity_id
         `;
 
-        const updates = await this.sourceDb.query(query);
+        const updates = await this.sourceDb.query(query, queryParams);
+
+        // Fetch URL keys separately and add to products (workaround for GROUP BY issue)
+        if (updates.length > 0) {
+            const entityIds = updates.map(p => p.entity_id);
+            const urlKeysQuery = `
+                SELECT entity_id, value as url_key
+                FROM catalog_product_entity_varchar
+                WHERE attribute_id = 119 AND store_id = 0 AND entity_id IN (${entityIds.join(',')})
+            `;
+            const urlKeys = await this.sourceDb.query(urlKeysQuery);
+
+            // Create a map for fast lookup
+            const urlKeyMap = new Map();
+            urlKeys.forEach(uk => urlKeyMap.set(uk.entity_id, uk.url_key));
+
+            // Add URL keys to products
+            updates.forEach(product => {
+                const eavUrlKey = urlKeyMap.get(product.entity_id);
+                if (eavUrlKey) {
+                    product.url_key = eavUrlKey;
+                }
+                // Keep flat table url_key as fallback if EAV is empty
+            });
+        }
+
+        // Ensure category_ids is a string (GROUP_CONCAT may return NULL)
+        updates.forEach(product => {
+            if (!product.category_ids) {
+                product.category_ids = '';
+            }
+        });
+
         logger.info(`Fetched ${updates.length} product updates from source`);
         return updates;
     }
@@ -139,8 +229,19 @@ class UpdateProductsStep {
                         continue;
                     }
 
-                    // Transform the update data
-                    const updateData = this.transformProductUpdate(product);
+                    // Transform the update data using the same logic as products step
+                    const transformedProduct = await this.dataTransformer.transformProduct(product);
+
+                    // Extract only the fields we want to update
+                    const updateData = {
+                        is_active: transformedProduct.is_active,
+                        status: transformedProduct.status,
+                        quantity: transformedProduct.quantity,
+                        price: transformedProduct.price,
+                        sold_date: transformedProduct.sold_date,
+                        archived_at: transformedProduct.archived_at,
+                        sold_price: transformedProduct.sold_price
+                    };
 
                     // Apply the update
                     await this.updateProduct(targetProductId, updateData);
@@ -160,70 +261,6 @@ class UpdateProductsStep {
         }
     }
 
-    transformProductUpdate(sourceProduct) {
-        // Transform the source data to match target schema
-        const updateData = {};
-
-        // is_active: status=1 (Enabled) AND visibility=2 (Catalog) OR 4 (Catalog, Search) = ACTIVE
-        updateData.is_active = (
-            sourceProduct.status !== null &&
-            sourceProduct.status !== undefined &&
-            String(sourceProduct.status) === '1' &&
-            sourceProduct.visibility !== null &&
-            sourceProduct.visibility !== undefined &&
-            (String(sourceProduct.visibility) === '2' || String(sourceProduct.visibility) === '4')
-        );
-
-        // status: based on archived_status and sold_date
-        updateData.status = this.determineProductStatus(sourceProduct);
-
-        // quantity: always 1 for simple products
-        updateData.quantity = 1;
-
-        // price: parse from source
-        updateData.price = parseFloat(sourceProduct.price) || 0;
-
-        // sold_date: prefer EAV sold_on, fallback to sales order date
-        updateData.sold_date = sourceProduct.eav_sold_date || sourceProduct.sold_date || null;
-
-        // archived_at: calculate if product is archived and has sold_date
-        updateData.archived_at = this.calculateArchivedAt(sourceProduct);
-
-        // sold_price: prefer EAV sold_price, fallback to sales order price
-        updateData.sold_price = sourceProduct.eav_sold_price || sourceProduct.last_sold_price || null;
-
-        return updateData;
-    }
-
-    determineProductStatus(product) {
-        // Primary source: archived_status from source
-        if (product.archived_status !== null && product.archived_status !== undefined) {
-            const archivedStatus = parseInt(product.archived_status);
-            if (archivedStatus === 1) {
-                return 'archived';
-            }
-        }
-
-        // Secondary source: if not archived and has sold_date (EAV or sales order), then 'sold'
-        if (product.eav_sold_date || product.sold_date) {
-            return 'sold';
-        }
-
-        // Default: pending
-        return 'pending';
-    }
-
-    calculateArchivedAt(product) {
-        // Only calculate archived_at if product is archived (archived_status = 1)
-        // and has a sold_date (EAV sold_on takes priority)
-        const soldDateValue = product.eav_sold_date || product.sold_date;
-        if (product.archived_status === 1 && soldDateValue) {
-            const soldDate = new Date(soldDateValue);
-            const archivedDate = new Date(soldDate.getTime() + (21 * 24 * 60 * 60 * 1000)); // 21 days
-            return archivedDate;
-        }
-        return null;
-    }
 
     async updateProduct(productId, updateData) {
         const fields = [];
