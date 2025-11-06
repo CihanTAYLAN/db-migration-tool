@@ -11,6 +11,8 @@ const { promisify } = require('util');
 
 const program = new Command();
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = 0;
+
 program
     .name('migration-cli')
     .description('Flexible Database Migration CLI Tool')
@@ -299,7 +301,7 @@ program
     });
 
 program
-    .command('migration:v3:list-steps')
+    .command('migrate:v3:list-steps')
     .description('List all Migration V3 steps with descriptions')
     .action(() => {
         const config = require('../migrationsv3/config/migration-config');
