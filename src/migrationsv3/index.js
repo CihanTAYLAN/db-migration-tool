@@ -19,6 +19,7 @@ const UpdateMasterCategoryIdsStep = require('./steps/update-master-category-ids'
 const CustomersStep = require('./steps/customers');
 const OrdersStep = require('./steps/orders');
 const TranslationStep = require('./steps/translation');
+const DeduplicateProductTranslationsStep = require('./steps/deduplicate-product-translations');
 const UpdateProductsStep = require('./steps/update-products');
 
 class MigrationV3 {
@@ -191,6 +192,14 @@ class MigrationV3 {
                 results.translation = await translationStep.run();
             }
 
+            // Step 11: Deduplicate Product Translations
+            // Remove duplicate slugs with same language_id by appending random suffix
+            if (config.steps.deduplicateProductTranslations.enabled) {
+                logger.info('🔄 Step 11: Deduplicate Product Translations');
+                const deduplicateStep = new DeduplicateProductTranslationsStep(this.targetDb, config);
+                results.deduplicateProductTranslations = await deduplicateStep.run();
+            }
+
             // Calculate execution time
             const executionTime = Date.now() - startTime;
             const executionTimeFormatted = this.formatExecutionTime(executionTime);
@@ -308,6 +317,10 @@ class MigrationV3 {
                 case 'translation':
                     const translationStep = new TranslationStep(this.targetDb, config, this.context.defaultLanguageId);
                     return await translationStep.run();
+
+                case 'deduplicateProductTranslations':
+                    const deduplicateStep = new DeduplicateProductTranslationsStep(this.targetDb, config);
+                    return await deduplicateStep.run();
 
                 case 'replaceImageUrls':
                     const ReplaceImageUrlsStep = require('./steps/replace-image-urls');

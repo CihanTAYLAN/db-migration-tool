@@ -78,6 +78,12 @@ const config = {
             batchSize: 100,
             parallelLimit: 2
         },
+        deduplicateProductTranslations: {
+            enabled: false,
+            description: 'Deduplicate product translations by adding random suffix to duplicate slugs with same language_id',
+            batchSize: 500,
+            parallelLimit: 1
+        },
         replaceImageUrls: {
             enabled: false,
             description: 'Replace image URLs for production domain in product_images table',
