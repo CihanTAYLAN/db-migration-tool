@@ -42,6 +42,39 @@ class MigrationV3 {
         logger.success('Databases connected successfully');
     }
 
+    async connectSourceDatabase() {
+        if (!this.sourceDb) {
+            logger.info('Connecting to source database...');
+            this.sourceDb = new DbClient(this.sourceUrl, this.sourceType);
+            await this.sourceDb.connect();
+            logger.success('Source database connected successfully');
+        }
+    }
+
+    async connectTargetDatabase() {
+        if (!this.targetDb) {
+            logger.info('Connecting to target database...');
+            this.targetDb = new DbClient(this.targetUrl, this.targetType);
+            await this.targetDb.connect();
+            logger.success('Target database connected successfully');
+        }
+    }
+
+    async connectRequiredDatabases(stepName) {
+        const stepConfig = config.steps[stepName];
+        if (!stepConfig) {
+            throw new Error(`Unknown step: ${stepName}`);
+        }
+
+        if (stepConfig.requiresSource) {
+            await this.connectSourceDatabase();
+        }
+
+        if (stepConfig.requiresTarget) {
+            await this.connectTargetDatabase();
+        }
+    }
+
     async disconnectDatabases() {
         logger.info('Disconnecting from databases...');
         if (this.sourceDb) await this.sourceDb.close();
@@ -219,10 +252,15 @@ class MigrationV3 {
     async runStep(stepName, domain = null) {
         try {
             logger.info(`Running specific step: ${stepName}`);
-            await this.connectDatabases();
+            await this.connectRequiredDatabases(stepName);
 
-            // Prepare context first
-            if (!this.context.eavMapper || !this.context.defaultLanguageId) {
+            // Prepare context first (only for steps that need source DB)
+            const stepConfig = config.steps[stepName];
+            if (stepConfig && stepConfig.requiresSource && (!this.context.eavMapper || !this.context.defaultLanguageId)) {
+                // For steps requiring source, we need to prepare context
+                if (!this.sourceDb) {
+                    await this.connectSourceDatabase();
+                }
                 const prepareStep = new PrepareStep(this.sourceDb, this.targetDb, config);
                 const prepareResult = await prepareStep.run();
                 this.context.eavMapper = prepareResult.eavMapper;

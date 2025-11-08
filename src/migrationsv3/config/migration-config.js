@@ -22,79 +22,105 @@ const config = {
     steps: {
         prepare: {
             enabled: true,
-            description: 'EAV attribute IDs and language setup'
+            description: 'EAV attribute IDs and language setup',
+            requiresSource: true,
+            requiresTarget: true
         },
         blog_posts: {
             enabled: true,
             description: 'Blog posts migration with translations and content',
             batchSize: 50,
-            parallelLimit: 1
+            parallelLimit: 1,
+            requiresSource: true,
+            requiresTarget: true
         },
         categories: {
             enabled: true,
             description: 'Category migration with translations',
             batchSize: 50,
-            parallelLimit: 1
+            parallelLimit: 1,
+            requiresSource: true,
+            requiresTarget: true
         },
         products: {
             enabled: true,
             description: 'Product migration with translations',
             batchSize: 100,
-            parallelLimit: 2
+            parallelLimit: 2,
+            requiresSource: true,
+            requiresTarget: true
         },
         merge: {
             enabled: true,
             description: 'Subcategory merging',
             batchSize: 100,
-            parallelLimit: 1
+            parallelLimit: 1,
+            requiresSource: false,
+            requiresTarget: true
         },
         certCoinCategories: {
             enabled: true,
             description: 'Map coins to certification categories from CSV data',
             batchSize: 50,
-            parallelLimit: 1
+            parallelLimit: 1,
+            requiresSource: true,
+            requiresTarget: true
         },
         updateMasterCategoryIds: {
             enabled: true,
             description: 'Fix master_category_id NULL fields after merge',
             batchSize: 1000,
-            parallelLimit: 1
+            parallelLimit: 1,
+            requiresSource: false,
+            requiresTarget: true
         },
         customers: {
             enabled: true,
             description: 'Customer and address migration',
             batchSize: 500,
-            parallelLimit: 1
+            parallelLimit: 1,
+            requiresSource: true,
+            requiresTarget: true
         },
         orders: {
             enabled: true,
             description: 'Order migration with customers, items, prices, and addresses',
             batchSize: 50,
-            parallelLimit: 2
+            parallelLimit: 2,
+            requiresSource: true,
+            requiresTarget: true
         },
         translation: {
             enabled: false,
             description: 'Batch translation of all categories and products to all available languages',
             batchSize: 100,
-            parallelLimit: 2
+            parallelLimit: 2,
+            requiresSource: false,
+            requiresTarget: true
         },
         deduplicateProductTranslations: {
             enabled: false,
             description: 'Deduplicate product translations by adding random suffix to duplicate slugs with same language_id',
             batchSize: 500,
-            parallelLimit: 1
+            parallelLimit: 1,
+            requiresSource: false,
+            requiresTarget: true
         },
         replaceImageUrls: {
             enabled: false,
             description: 'Replace image URLs for production domain in product_images table',
             batchSize: 200,
-            parallelLimit: 1
+            parallelLimit: 1,
+            requiresSource: false,
+            requiresTarget: true
         },
         updateProducts: {
             enabled: false,
             description: 'Update product fields (is_active, status, quantity, price, sold_date, archived_at, sold_price) from source database',
             batchSize: 100,
-            parallelLimit: 1
+            parallelLimit: 1,
+            requiresSource: true,
+            requiresTarget: true
         }
     },
 
