@@ -23,8 +23,8 @@ class ReplaceImageUrlsStep {
     }
 
     isValidDomain(domain) {
-        // Basic domain validation - should start with https:// and contain valid domain characters
-        const domainRegex = /^https:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        // URL validation - should start with https:// and contain valid domain characters (with optional path)
+        const domainRegex = /^https:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/.*)?$/;
         return domainRegex.test(domain);
     }
 

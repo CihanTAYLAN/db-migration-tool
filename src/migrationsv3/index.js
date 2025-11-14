@@ -11,6 +11,7 @@ const config = require('./config/migration-config');
 // Import steps
 const PrepareStep = require('./steps/prepare');
 const BlogPostsStep = require('./steps/blog-posts');
+const UpdateBlogDescriptionsStep = require('./steps/update-blog-descriptions');
 const CategoriesStep = require('./steps/categories');
 const ProductsStep = require('./steps/products');
 const MergeStep = require('./steps/merge-subcategories');
@@ -23,11 +24,12 @@ const DeduplicateProductTranslationsStep = require('./steps/deduplicate-product-
 const UpdateProductsStep = require('./steps/update-products');
 
 class MigrationV3 {
-    constructor(sourceUrl, sourceType, targetUrl, targetType) {
+    constructor(sourceUrl, sourceType, targetUrl, targetType, domain = 'https://drakesterling.online') {
         this.sourceUrl = sourceUrl;
         this.sourceType = sourceType;
         this.targetUrl = targetUrl;
         this.targetType = targetType;
+        this.domain = domain;
         this.sourceDb = null;
         this.targetDb = null;
         this.context = {}; // Shared context between steps
@@ -117,6 +119,20 @@ class MigrationV3 {
                 results.blog_posts = await blogPostsStep.run();
             }
 
+            // Step 2.1: Update Blog Descriptions
+            // Update content_translations description field from blog posts
+            if (config.steps.updateBlogDescriptions.enabled) {
+                logger.info('📝 Step 2.1: Update Blog Descriptions');
+                const updateBlogDescriptionsStep = new UpdateBlogDescriptionsStep(
+                    this.sourceDb,
+                    this.targetDb,
+                    config,
+                    this.context.defaultLanguageId,
+                    this.domain
+                );
+                results.updateBlogDescriptions = await updateBlogDescriptionsStep.run();
+            }
+
             // Step 3: Categories
             // Migrate all categories from catalog_category_flat_store_1
             if (config.steps.categories.enabled) {
@@ -189,10 +205,10 @@ class MigrationV3 {
                 results.customers = await customersStep.run();
             }
 
-            // Step 8: Orders
+            // Step 9: Orders
             // Migrate orders + order items + shipping/billing addresses in tree structure
             if (config.steps.orders.enabled) {
-                logger.info('📋 Step 8: Orders');
+                logger.info('📋 Step 9: Orders');
                 const ordersStep = new OrdersStep(
                     this.sourceDb,
                     this.targetDb,
@@ -201,20 +217,6 @@ class MigrationV3 {
                     this.context.defaultLanguageId
                 );
                 results.orders = await ordersStep.run();
-            }
-
-            // Step 9: Update Products
-            // Update product fields from source database (manual step)
-            if (config.steps.updateProducts.enabled) {
-                logger.info('🔄 Step 9: Update Products');
-                const updateProductsStep = new UpdateProductsStep(
-                    this.sourceDb,
-                    this.targetDb,
-                    config,
-                    this.context.eavMapper,
-                    this.context.defaultLanguageId
-                );
-                results.updateProducts = await updateProductsStep.run();
             }
 
             // Step 10: Translation
@@ -231,6 +233,29 @@ class MigrationV3 {
                 logger.info('🔄 Step 11: Deduplicate Product Translations');
                 const deduplicateStep = new DeduplicateProductTranslationsStep(this.targetDb, config);
                 results.deduplicateProductTranslations = await deduplicateStep.run();
+            }
+
+            // Step 12: Replace Image URLs
+            // Replace image URLs for production domain in product_images table
+            if (config.steps.replaceImageUrls.enabled) {
+                logger.info('🖼️ Step 12: Replace Image URLs');
+                const ReplaceImageUrlsStep = require('./steps/replace-image-urls');
+                const replaceImageUrlsStep = new ReplaceImageUrlsStep(this.targetDb, config, this.domain);
+                results.replaceImageUrls = await replaceImageUrlsStep.run();
+            }
+
+            // Step 13: Update Products
+            // Update product fields from source database (manual step)
+            if (config.steps.updateProducts.enabled) {
+                logger.info('🔄 Step 13: Update Products');
+                const updateProductsStep = new UpdateProductsStep(
+                    this.sourceDb,
+                    this.targetDb,
+                    config,
+                    this.context.eavMapper,
+                    this.context.defaultLanguageId
+                );
+                results.updateProducts = await updateProductsStep.run();
             }
 
             // Calculate execution time
@@ -252,6 +277,10 @@ class MigrationV3 {
     async runStep(stepName, domain = null) {
         try {
             logger.info(`Running specific step: ${stepName}`);
+            
+            // Use provided domain or fallback to instance domain
+            const effectiveDomain = domain || this.domain;
+            
             await this.connectRequiredDatabases(stepName);
 
             // Prepare context first (only for steps that need source DB)
@@ -282,6 +311,16 @@ class MigrationV3 {
                     );
                     return await blogPostsStep.run();
 
+                case 'updateBlogDescriptions':
+                    const updateBlogDescriptionsStep = new UpdateBlogDescriptionsStep(
+                        this.sourceDb,
+                        this.targetDb,
+                        config,
+                        this.context.defaultLanguageId,
+                        effectiveDomain
+                    );
+                    return await updateBlogDescriptionsStep.run();
+
                 case 'categories':
                     const categoriesStep = new CategoriesStep(
                         this.sourceDb,
@@ -301,18 +340,6 @@ class MigrationV3 {
                         this.context.defaultLanguageId
                     );
                     return await productsStep.run();
-
-                case 'updateImagePaths':
-                    const updateImagePathsStep = new UpdateImagePathsStep(this.sourceDb, this.targetDb, config);
-                    return await updateImagePathsStep.run();
-
-                case 'productMasterImagesUpdate':
-                    const productMasterImagesUpdateStep = new ProductMasterImagesUpdateStep(this.sourceDb, this.targetDb, config);
-                    return await productMasterImagesUpdateStep.run();
-
-                case 'combinedImageProcessing':
-                    const combinedImageProcessingStep = new CombinedImageProcessingStep(this.sourceDb, this.targetDb, config);
-                    return await combinedImageProcessingStep.run();
 
                 case 'merge':
                     const mergeStep = new MergeStep(this.targetDb, this.context.defaultLanguageId);
@@ -362,7 +389,7 @@ class MigrationV3 {
 
                 case 'replaceImageUrls':
                     const ReplaceImageUrlsStep = require('./steps/replace-image-urls');
-                    const replaceImageUrlsStep = new ReplaceImageUrlsStep(this.targetDb, config, domain);
+                    const replaceImageUrlsStep = new ReplaceImageUrlsStep(this.targetDb, config, effectiveDomain);
                     return await replaceImageUrlsStep.run();
 
                 case 'updateProducts':
@@ -437,13 +464,14 @@ if (require.main === module) {
     const sourceType = process.env.SOURCE_DB_TYPE || 'mysql';
     const targetUrl = process.env.TARGET_DATABASE_URL;
     const targetType = process.env.TARGET_DB_TYPE || 'postgresql';
+    const domain = process.env.DOMAIN || 'https://drakesterling.com';
 
     if (!sourceUrl || !targetUrl) {
         console.error('Please set SOURCE_DATABASE_URL and TARGET_DATABASE_URL environment variables');
         process.exit(1);
     }
 
-    const migration = new MigrationV3(sourceUrl, sourceType, targetUrl, targetType);
+    const migration = new MigrationV3(sourceUrl, sourceType, targetUrl, targetType, domain);
     migration.run().catch(error => {
         console.error('Migration V3 failed:', error);
         process.exit(1);

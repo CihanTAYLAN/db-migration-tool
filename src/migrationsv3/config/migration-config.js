@@ -34,6 +34,14 @@ const config = {
             requiresSource: true,
             requiresTarget: true
         },
+        updateBlogDescriptions: {
+            enabled: false,
+            description: 'Update content_translations description field from Mageplaza blog posts',
+            batchSize: 50,
+            parallelLimit: 1,
+            requiresSource: true,
+            requiresTarget: true
+        },
         categories: {
             enabled: true,
             description: 'Category migration with translations',
