@@ -190,21 +190,68 @@ class UpdateBlogDescriptionsStep {
   }
 
   parseMagentoMediaUrls(content) {
-    // Replace Magento media URLs with proper domain URLs
-    // Pattern: src="{{media url="/path/to/image.jpg"}}"
-    // Convert to: src="https://drakesterling.com/path/to/image.jpg"
+    // Replace Magento media URLs and direct image URLs with API endpoint URLs
+    // Convert all to: src="{backendDomain}/api/ecommerce/file-manager/stream/mg-blog-images/{image-path}"
     
-    const mediaUrlPattern = /src="{{media url="([^"]+)"}}/g;
+    // First, handle Magento media URLs with src=: src="{{media url="path/to/image.jpg"}}
+    const magentoMediaWithSrcPattern = /src="{{media url="([^"]+)"}}/g;
     
-    return content.replace(mediaUrlPattern, (match, urlPath) => {
-      // Remove leading slash and ensure proper URL structure
+    content = content.replace(magentoMediaWithSrcPattern, (match, urlPath) => {
+      // Remove leading slash and replace path
       const cleanPath = urlPath.startsWith('/') ? urlPath.slice(1) : urlPath;
-      const fullUrl = `${this.domain}/${cleanPath}`;
+      const updatedPath = cleanPath.replace(/^media\/wysiwyg\//, 'mg-blog-images/').replace(/^wysiwyg\//, 'mg-blog-images/');
+      const fullUrl = `${this.domain}/api/ecommerce/file-manager/stream/${updatedPath}`;
       
-      logger.debug(`Converted Magento media URL: ${match} -> src="${fullUrl}"`);
+      logger.debug(`Converted Magento media URL (with src): ${match} -> src="${fullUrl}"`);
       
       return `src="${fullUrl}"`;
     });
+    
+    // Handle Magento media URLs without src=: {{media url="path/to/image.jpg"}}
+    const magentoMediaWithoutSrcPattern = /\{\{media url="([^"]+)"\}\}/g;
+    
+    content = content.replace(magentoMediaWithoutSrcPattern, (match, urlPath) => {
+      // Remove leading slash and replace path
+      const cleanPath = urlPath.startsWith('/') ? urlPath.slice(1) : urlPath;
+      const updatedPath = cleanPath.replace(/^media\/wysiwyg\//, 'mg-blog-images/').replace(/^wysiwyg\//, 'mg-blog-images/');
+      const fullUrl = `${this.domain}/api/ecommerce/file-manager/stream/${updatedPath}`;
+      
+      logger.debug(`Converted Magento media URL (without src): ${match} -> ${fullUrl}`);
+      
+      return fullUrl;
+    });
+    
+    // Then, handle direct image URLs with wysiwyg path
+    const directImagePattern = /src="([^"]*wysiwyg\/[^"]+)"/g;
+    
+    content = content.replace(directImagePattern, (match, imageUrl) => {
+      // Extract everything after wysiwyg/
+      const pathMatch = imageUrl.match(/wysiwyg\/(.+)$/);
+      if (pathMatch) {
+        const imagePath = pathMatch[1];
+        
+        // Replace domain with target domain if different, then update path
+        let newUrl = imageUrl;
+        if (this.domain) {
+          // Extract current domain from URL
+          const urlMatch = imageUrl.match(/^https?:\/\/[^/]+/);
+          if (urlMatch) {
+            newUrl = `${this.domain}${imageUrl.substring(urlMatch[0].length)}`;
+          }
+        }
+        
+        // Replace wysiwyg with mg-blog-images
+        newUrl = newUrl.replace(/wysiwyg\//, 'mg-blog-images/');
+        
+        logger.debug(`Converted direct image URL: ${match} -> src="${newUrl}"`);
+        
+        return `src="${newUrl}"`;
+      }
+      
+      return match;
+    });
+    
+    return content;
   }
 
   async updateDescription(translationId, description, updatedAt) {
