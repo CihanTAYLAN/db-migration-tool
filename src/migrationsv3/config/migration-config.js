@@ -129,6 +129,14 @@ const config = {
             parallelLimit: 1,
             requiresSource: true,
             requiresTarget: true
+        },
+        fixContentUrls: {
+            enabled: false,
+            description: 'Fix swapped slug and description fields in content_translations table for non-English languages',
+            batchSize: 200,
+            parallelLimit: 1,
+            requiresSource: false,
+            requiresTarget: true
         }
     },
 

@@ -22,6 +22,7 @@ const OrdersStep = require('./steps/orders');
 const TranslationStep = require('./steps/translation');
 const DeduplicateProductTranslationsStep = require('./steps/deduplicate-product-translations');
 const UpdateProductsStep = require('./steps/update-products');
+const FixContentUrlsStep = require('./steps/fix-content-urls');
 
 class MigrationV3 {
     constructor(sourceUrl, sourceType, targetUrl, targetType, domain = 'https://drakesterling.online') {
@@ -258,6 +259,14 @@ class MigrationV3 {
                 results.updateProducts = await updateProductsStep.run();
             }
 
+            // Step 14: Fix Content URLs
+            // Fix and standardize URLs in content fields across various tables
+            if (config.steps.fixContentUrls.enabled) {
+                logger.info('🔗 Step 14: Fix Content URLs');
+                const fixContentUrlsStep = new FixContentUrlsStep(this.targetDb, config, this.domain);
+                results.fixContentUrls = await fixContentUrlsStep.run();
+            }
+
             // Calculate execution time
             const executionTime = Date.now() - startTime;
             const executionTimeFormatted = this.formatExecutionTime(executionTime);
@@ -401,6 +410,10 @@ class MigrationV3 {
                         this.context.defaultLanguageId
                     );
                     return await updateProductsStep.run();
+
+                case 'fixContentUrls':
+                    const fixContentUrlsStep = new FixContentUrlsStep(this.targetDb, config, effectiveDomain);
+                    return await fixContentUrlsStep.run();
 
                 default:
                     throw new Error(`Unknown step: ${stepName}`);
