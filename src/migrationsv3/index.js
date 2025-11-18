@@ -23,6 +23,8 @@ const TranslationStep = require('./steps/translation');
 const DeduplicateProductTranslationsStep = require('./steps/deduplicate-product-translations');
 const UpdateProductsStep = require('./steps/update-products');
 const FixContentUrlsStep = require('./steps/fix-content-urls');
+const FixJapaneseSlugsStep = require('./steps/fix-japanese-slugs');
+const FixGermanSlugsStep = require('./steps/fix-german-slugs');
 
 class MigrationV3 {
     constructor(sourceUrl, sourceType, targetUrl, targetType, domain = 'https://drakesterling.online') {
@@ -267,6 +269,22 @@ class MigrationV3 {
                 results.fixContentUrls = await fixContentUrlsStep.run();
             }
 
+            // Step 15: Fix Japanese Slugs
+            // Convert Japanese slugs to Romaji (Latin script) for better URL compatibility
+            if (config.steps.fixJapaneseSlugs.enabled) {
+                logger.info('🗾 Step 15: Fix Japanese Slugs');
+                const fixJapaneseSlugsStep = new FixJapaneseSlugsStep(this.targetDb, config, this.domain);
+                results.fixJapaneseSlugs = await fixJapaneseSlugsStep.run();
+            }
+
+            // Step 16: Fix German Slugs
+            // Convert German umlauts and special characters in slugs to URL-friendly format
+            if (config.steps.fixGermanSlugs.enabled) {
+                logger.info('🇩🇪 Step 16: Fix German Slugs');
+                const fixGermanSlugsStep = new FixGermanSlugsStep(this.targetDb, config, this.domain);
+                results.fixGermanSlugs = await fixGermanSlugsStep.run();
+            }
+
             // Calculate execution time
             const executionTime = Date.now() - startTime;
             const executionTimeFormatted = this.formatExecutionTime(executionTime);
@@ -414,6 +432,14 @@ class MigrationV3 {
                 case 'fixContentUrls':
                     const fixContentUrlsStep = new FixContentUrlsStep(this.targetDb, config, effectiveDomain);
                     return await fixContentUrlsStep.run();
+
+                case 'fixJapaneseSlugs':
+                    const fixJapaneseSlugsStep = new FixJapaneseSlugsStep(this.targetDb, config, effectiveDomain);
+                    return await fixJapaneseSlugsStep.run();
+
+                case 'fixGermanSlugs':
+                    const fixGermanSlugsStep = new FixGermanSlugsStep(this.targetDb, config, effectiveDomain);
+                    return await fixGermanSlugsStep.run();
 
                 default:
                     throw new Error(`Unknown step: ${stepName}`);

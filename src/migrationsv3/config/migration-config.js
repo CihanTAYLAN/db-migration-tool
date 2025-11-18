@@ -137,6 +137,22 @@ const config = {
             parallelLimit: 1,
             requiresSource: false,
             requiresTarget: true
+        },
+        fixJapaneseSlugs: {
+            enabled: false,
+            description: 'Convert Japanese slugs to Romaji (Latin script) for better URL compatibility',
+            batchSize: 50,
+            parallelLimit: 1,
+            requiresSource: false,
+            requiresTarget: true
+        },
+        fixGermanSlugs: {
+            enabled: false,
+            description: 'Convert German umlauts and special characters in slugs to URL-friendly format',
+            batchSize: 50,
+            parallelLimit: 1,
+            requiresSource: false,
+            requiresTarget: true
         }
     },
 
