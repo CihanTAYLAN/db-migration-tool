@@ -25,6 +25,7 @@ const UpdateProductsStep = require('./steps/update-products');
 const FixContentUrlsStep = require('./steps/fix-content-urls');
 const FixJapaneseSlugsStep = require('./steps/fix-japanese-slugs');
 const FixGermanSlugsStep = require('./steps/fix-german-slugs');
+const ContentTranslationStep = require('./steps/content-translation');
 
 class MigrationV3 {
     constructor(sourceUrl, sourceType, targetUrl, targetType, domain = 'https://drakesterling.online') {
@@ -310,12 +311,14 @@ class MigrationV3 {
             
             await this.connectRequiredDatabases(stepName);
 
-            // Prepare context first (only for steps that need source DB)
-            const stepConfig = config.steps[stepName];
-            if (stepConfig && stepConfig.requiresSource && (!this.context.eavMapper || !this.context.defaultLanguageId)) {
-                // For steps requiring source, we need to prepare context
+            // Prepare context if needed for steps that require defaultLanguageId
+            if (!this.context.defaultLanguageId) {
+                logger.info('Preparing context (defaultLanguageId)...');
                 if (!this.sourceDb) {
                     await this.connectSourceDatabase();
+                }
+                if (!this.targetDb) {
+                    await this.connectTargetDatabase();
                 }
                 const prepareStep = new PrepareStep(this.sourceDb, this.targetDb, config);
                 const prepareResult = await prepareStep.run();
@@ -409,6 +412,10 @@ class MigrationV3 {
                 case 'translation':
                     const translationStep = new TranslationStep(this.targetDb, config, this.context.defaultLanguageId);
                     return await translationStep.run();
+
+                case 'contentTranslation':
+                    const contentTranslationStep = new ContentTranslationStep(this.targetDb, config, this.context.defaultLanguageId);
+                    return await contentTranslationStep.run();
 
                 case 'deduplicateProductTranslations':
                     const deduplicateStep = new DeduplicateProductTranslationsStep(this.targetDb, config);

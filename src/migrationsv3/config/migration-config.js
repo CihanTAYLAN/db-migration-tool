@@ -106,6 +106,14 @@ const config = {
             requiresSource: false,
             requiresTarget: true
         },
+        contentTranslation: {
+            enabled: false,
+            description: 'Batch translation of all content pages to all available languages',
+            batchSize: 50,
+            parallelLimit: 2,
+            requiresSource: false,
+            requiresTarget: true
+        },
         deduplicateProductTranslations: {
             enabled: false,
             description: 'Deduplicate product translations by adding random suffix to duplicate slugs with same language_id',
