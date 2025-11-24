@@ -169,6 +169,22 @@ const config = {
             parallelLimit: 1,
             requiresSource: false,
             requiresTarget: true
+        },
+        sluggifyProductCategoryUrls: {
+            enabled: true,
+            description: 'Fix German and Japanese slug character issues in category and product translations',
+            batchSize: 100,
+            parallelLimit: 1,
+            requiresSource: false,
+            requiresTarget: true
+        },
+        updateCategoryParentSlugs: {
+            enabled: true,
+            description: 'Update parent_slugs field in category_translations based on category hierarchy',
+            batchSize: 100,
+            parallelLimit: 1,
+            requiresSource: false,
+            requiresTarget: true
         }
     },
 

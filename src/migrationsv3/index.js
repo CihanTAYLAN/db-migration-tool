@@ -27,6 +27,8 @@ const FixJapaneseSlugsStep = require('./steps/fix-japanese-slugs');
 const FixGermanSlugsStep = require('./steps/fix-german-slugs');
 const ContentTranslationStep = require('./steps/content-translation');
 const UpdateContentUrlsStep = require('./steps/update-content-urls');
+const SluggifyProductCategoryUrlsStep = require('./steps/sluggify-product-category-urls');
+const UpdateCategoryParentSlugsStep = require('./steps/update-category-parent-slugs');
 
 class MigrationV3 {
     constructor(sourceUrl, sourceType, targetUrl, targetType, domain = 'https://drakesterling.online') {
@@ -295,6 +297,22 @@ class MigrationV3 {
                 results.updateContentUrls = await updateContentUrlsStep.run();
             }
 
+            // Step 18: Sluggify Product and Category URLs
+            // Fix German and Japanese slug character issues in category and product translations
+            if (config.steps.sluggifyProductCategoryUrls.enabled) {
+                logger.info('🔤 Step 18: Sluggify Product and Category URLs');
+                const sluggifyStep = new SluggifyProductCategoryUrlsStep(this.targetDb, config);
+                results.sluggifyProductCategoryUrls = await sluggifyStep.run();
+            }
+
+            // Step 19: Update Category Parent Slugs
+            // Update parent_slugs field in category_translations based on category hierarchy
+            if (config.steps.updateCategoryParentSlugs.enabled) {
+                logger.info('🔗 Step 19: Update Category Parent Slugs');
+                const updateParentSlugsStep = new UpdateCategoryParentSlugsStep(this.targetDb, config);
+                results.updateCategoryParentSlugs = await updateParentSlugsStep.run();
+            }
+
             // Calculate execution time
             const executionTime = Date.now() - startTime;
             const executionTimeFormatted = this.formatExecutionTime(executionTime);
@@ -460,6 +478,14 @@ class MigrationV3 {
                 case 'updateContentUrls':
                     const updateContentUrlsStep = new UpdateContentUrlsStep(this.targetDb, config);
                     return await updateContentUrlsStep.run();
+
+                case 'sluggifyProductCategoryUrls':
+                    const sluggifyStep = new SluggifyProductCategoryUrlsStep(this.targetDb, config);
+                    return await sluggifyStep.run();
+
+                case 'updateCategoryParentSlugs':
+                    const updateParentSlugsStep = new UpdateCategoryParentSlugsStep(this.targetDb, config);
+                    return await updateParentSlugsStep.run();
 
                 default:
                     throw new Error(`Unknown step: ${stepName}`);
