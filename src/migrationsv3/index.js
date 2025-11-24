@@ -26,6 +26,7 @@ const FixContentUrlsStep = require('./steps/fix-content-urls');
 const FixJapaneseSlugsStep = require('./steps/fix-japanese-slugs');
 const FixGermanSlugsStep = require('./steps/fix-german-slugs');
 const ContentTranslationStep = require('./steps/content-translation');
+const UpdateContentUrlsStep = require('./steps/update-content-urls');
 
 class MigrationV3 {
     constructor(sourceUrl, sourceType, targetUrl, targetType, domain = 'https://drakesterling.online') {
@@ -286,6 +287,14 @@ class MigrationV3 {
                 results.fixGermanSlugs = await fixGermanSlugsStep.run();
             }
 
+            // Step 17: Update Content URLs
+            // Update media URLs in content_translations to new API format
+            if (config.steps.updateContentUrls.enabled) {
+                logger.info('🔗 Step 17: Update Content URLs');
+                const updateContentUrlsStep = new UpdateContentUrlsStep(this.targetDb, config);
+                results.updateContentUrls = await updateContentUrlsStep.run();
+            }
+
             // Calculate execution time
             const executionTime = Date.now() - startTime;
             const executionTimeFormatted = this.formatExecutionTime(executionTime);
@@ -447,6 +456,10 @@ class MigrationV3 {
                 case 'fixGermanSlugs':
                     const fixGermanSlugsStep = new FixGermanSlugsStep(this.targetDb, config, effectiveDomain);
                     return await fixGermanSlugsStep.run();
+
+                case 'updateContentUrls':
+                    const updateContentUrlsStep = new UpdateContentUrlsStep(this.targetDb, config);
+                    return await updateContentUrlsStep.run();
 
                 default:
                     throw new Error(`Unknown step: ${stepName}`);

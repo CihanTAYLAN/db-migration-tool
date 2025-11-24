@@ -945,6 +945,11 @@ generate-function@^2.3.1:
   dependencies:
     is-property "^1.0.2"
 
+hepburn@^1.2.2:
+  version "1.2.2"
+  resolved "https://registry.yarnpkg.com/hepburn/-/hepburn-1.2.2.tgz#c3a8fa9d705469ad05cf9922ee4ad135b45770b4"
+  integrity sha512-DeykBc4XmfAWsnN+Y1Svi9uaQnnz21Q/ARuGWvIBxP1iUFeMIWL41DfVkgTh7tU23LFIbmIBO2Bk17BTPu0kVA==
+
 iconv-lite@^0.7.0:
   version "0.7.0"
   resolved "https://registry.yarnpkg.com/iconv-lite/-/iconv-lite-0.7.0.tgz#c50cd80e6746ca8115eb98743afa81aa0e147a3e"
@@ -971,6 +976,21 @@ kuler@^2.0.0:
   version "2.0.0"
   resolved "https://registry.yarnpkg.com/kuler/-/kuler-2.0.0.tgz#e2c570a3800388fb44407e851531c1d670b061b3"
   integrity sha512-Xq9nH7KlWZmXAtodXDDRE7vs6DU1gTU8zYDHDiWLSip45Egwq3plLHzPn27NgvzL2r1LMPC1vdqh98sQxtqj4A==
+
+limax@^4.2.1:
+  version "4.2.1"
+  resolved "https://registry.yarnpkg.com/limax/-/limax-4.2.1.tgz#05d9fc7e7b7122b2af4c0175eff20373f1d9745e"
+  integrity sha512-7YeQ8dV9XIjYIjBSFUSOfoxQFAtG2ckD0FGKYCuRaPJKc3IKXZwqsSLD5PnlPklp4y5ncPWhiL142ijAtHGNgw==
+  dependencies:
+    hepburn "^1.2.2"
+    lodash.deburr "^4.1.0"
+    pinyin-pro "^3.27.0"
+    speakingurl "^14.0.1"
+
+lodash.deburr@^4.1.0:
+  version "4.1.0"
+  resolved "https://registry.yarnpkg.com/lodash.deburr/-/lodash.deburr-4.1.0.tgz#ddb1bbb3ef07458c0177ba07de14422cb033ff9b"
+  integrity sha512-m/M1U1f3ddMCs6Hq2tAsYThTBDaAKFDX3dwDo97GEYzamXi9SqUpjWi/Rrj/gf3X2n8ktwgZrlP1z6E3v/IExQ==
 
 logform@^2.7.0:
   version "2.7.0"
@@ -1089,6 +1109,11 @@ pgpass@1.0.5:
   dependencies:
     split2 "^4.1.0"
 
+pinyin-pro@^3.27.0:
+  version "3.27.0"
+  resolved "https://registry.yarnpkg.com/pinyin-pro/-/pinyin-pro-3.27.0.tgz#b13e60a2383067e5b1231106f7939a2c7591be29"
+  integrity sha512-Osdgjwe7Rm17N2paDMM47yW+jUIUH3+0RGo8QP39ZTLpTaJVDK0T58hOLaMQJbcMmAebVuK2ePunTEVEx1clNQ==
+
 postgres-array@~2.0.0:
   version "2.0.0"
   resolved "https://registry.yarnpkg.com/postgres-array/-/postgres-array-2.0.0.tgz#48f8fce054fbc69671999329b8834b772652d82e"
@@ -1144,6 +1169,11 @@ slugify@^1.6.6:
   version "1.6.6"
   resolved "https://registry.yarnpkg.com/slugify/-/slugify-1.6.6.tgz#2d4ac0eacb47add6af9e04d3be79319cbcc7924b"
   integrity sha512-h+z7HKHYXj6wJU+AnS/+IH8Uh9fdcX1Lrhg1/VMdf9PwoBQXFcXiAdsy2tSK0P6gKwJLXp02r90ahUCqHk9rrw==
+
+speakingurl@^14.0.1:
+  version "14.0.1"
+  resolved "https://registry.yarnpkg.com/speakingurl/-/speakingurl-14.0.1.tgz#f37ec8ddc4ab98e9600c1c9ec324a8c48d772a53"
+  integrity sha512-1POYv7uv2gXoyGFpBCmpDVSNV74IfsWlDW216UPjbWufNf+bSU6GdbDsxdcxtfwb4xlI3yxzOTKClUosxARYrQ==
 
 split2@^4.1.0:
   version "4.2.0"

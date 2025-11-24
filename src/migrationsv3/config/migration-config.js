@@ -161,6 +161,14 @@ const config = {
             parallelLimit: 1,
             requiresSource: false,
             requiresTarget: true
+        },
+        updateContentUrls: {
+            enabled: true,
+            description: 'Update media URLs in content_translations to new API format',
+            batchSize: 100,
+            parallelLimit: 1,
+            requiresSource: false,
+            requiresTarget: true
         }
     },
 

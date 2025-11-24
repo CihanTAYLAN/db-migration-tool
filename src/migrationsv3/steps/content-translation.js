@@ -4,6 +4,7 @@
 Batch translation of content pages to all supported languages.
 */
 
+const slug = require('limax');
 const logger = require('../../logger');
 const BatchProcessor = require('../lib/batch-processor');
 const { TranslateClient, TranslateTextCommand } = require('@aws-sdk/client-translate');
@@ -107,7 +108,6 @@ class ContentTranslationStep {
                 ct.meta_keywords
             FROM contents c
             INNER JOIN content_translations ct ON c.id = ct.content_id AND ct.language_id = $1
-            WHERE c.published = true AND c.is_allowed = true
             ORDER BY c.id
         `;
 
@@ -236,10 +236,15 @@ class ContentTranslationStep {
         });
 
         try {
+            // Check if text contains HTML tags
+            const hasHtml = /<[^>]*>/.test(text);
+
             const command = new TranslateTextCommand({
                 Text: text,
                 SourceLanguageCode: fromLang,
-                TargetLanguageCode: toLang
+                TargetLanguageCode: toLang,
+                // Use HTML mode to preserve HTML tags, text mode for plain text
+                ContentType: hasHtml ? 'html' : 'text/plain'
             });
 
             const response = await client.send(command);
@@ -256,30 +261,14 @@ class ContentTranslationStep {
         }
     }
 
-    slugify(text) {
-        if (!text || text.trim() === '') {
-            return '';
-        }
-
-        return text
-            .toLowerCase()
-            .trim()
-            .replace(/[<>\.\"\',\|\?#%+\[\]{}]/g, '')
-            .replace(/[\s_-]+/g, '-')
-            .replace(/^-+|-+$/g, '');
-    }
-
     async saveTranslation(contentId, language, translationData) {
-        // Generate slug - use English translation for Japanese URLs, normal title for others
-        const slugText = language.code === 'ja' ?
-            await this.translateText(translationData.title, language.code, 'en') :
-            translationData.title;
+        let slugText = translationData.title;
 
         const translationRecord = {
-            id: require('uuid').v4(),
+            id: require('uuid').v7(),
             title: translationData.title,
             description: translationData.description,
-            slug: this.slugify(slugText),
+            slug: slug(slugText),
             meta_title: translationData.meta_title,
             meta_description: translationData.meta_description,
             meta_keywords: translationData.meta_keywords,
