@@ -65,6 +65,7 @@ class UpdateContentUrlsStep {
             SELECT id, description
             FROM content_translations
             WHERE description LIKE '%media url%'
+            OR description LIKE '%mg-blog-images/mg-blog-images%'
             ORDER BY id
         `;
 
@@ -85,14 +86,20 @@ class UpdateContentUrlsStep {
     processMediaUrls(content) {
         if (!content) return '';
 
+        let processedContent = content;
+
+        // First, fix any existing broken API URLs (double mg-blog-images)
+        processedContent = processedContent.replace(
+            /https:\/\/api\.drakesterling\.com\/api\/ecommerce\/file-manager\/stream\/mg-blog-images\/mg-blog-images\//g,
+            'https://api.drakesterling.com/api/ecommerce/file-manager/stream/mg-blog-images/'
+        );
+
         // Test with sample content first
         const testContent = '{{media url="wysiwyg/CoinexCoinShow-1.jpg"}}';
         logger.debug('Testing processMediaUrls function', {
             testInput: testContent,
             testOutput: this.testMediaUrlConversion(testContent)
         });
-
-        let processedContent = content;
 
         // Debug: Log raw content if it contains media url
         if (processedContent.includes('media url')) {
@@ -134,7 +141,7 @@ class UpdateContentUrlsStep {
             });
         }
 
-        const apiBaseUrl = 'https://api.drakesterling.com/api/ecommerce/file-manager/stream/mg-blog-images/';
+        const apiBaseUrl = 'https://api.drakesterling.com/api/ecommerce/file-manager/stream/mg-blog-images';
         
         // Try multiple patterns to catch all variations
         const patterns = [
